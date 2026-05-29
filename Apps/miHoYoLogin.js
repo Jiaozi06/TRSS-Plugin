@@ -3,6 +3,7 @@ import QR from "qrcode"
 import _ from "lodash"
 import crypto from "crypto"
 import fetch from "node-fetch"
+import sharp from "sharp"
 
 const regex = "^#?(米哈?游社?登(录|陆|入)|登(录|陆|入)米哈?游社?)"
 const publicKey = `-----BEGIN PUBLIC KEY-----
@@ -93,6 +94,181 @@ const errorTips = [
 ]
 const accounts = {}
 const Running = {}
+
+// ─────────────────────────────────────────────────────────────────
+//  美化二维码生成器
+//
+//  效果：
+//    · 深色渐变背景 (#1a1a2e → #16213e)
+//    · 深蓝色码点，柔和圆角
+//    · 中心叠加触发者 QQ 圆形头像（带白色光晕描边）
+//    · 整体加外框圆角卡片
+//
+//  参数：
+//    qrUrl   – 二维码内容 URL
+//    qqNum   – 触发者 QQ 号（用于拉取头像）
+//
+//  返回：PNG Buffer
+// ─────────────────────────────────────────────────────────────────
+async function makeStyledQR(qrUrl, qqNum) {
+  const SIZE = 520          // 二维码边长 (px)
+  const BORDER = 28         // 外边距（留给外框卡片）
+  const AVATAR_RATIO = 0.22 // 头像占二维码的比例
+
+  // ── 1. 生成深色系 QR ───────────────────────────────────────────
+  const qrBuf = await QR.toBuffer(qrUrl, {
+    width: SIZE,
+    margin: 2,
+    errorCorrectionLevel: "H",   // 必须 H，为中心 logo 保留纠错能力
+    color: {
+      dark: "#1a1a2e",            // 码点颜色：深海蓝
+      light: "#f8faff",           // 背景色：极淡蓝白
+    },
+  })
+
+  // ── 2. 外框圆角卡片背景 ────────────────────────────────────────
+  const CARD = SIZE + BORDER * 2
+  const cardBg = Buffer.from(`
+    <svg width="${CARD}" height="${CARD}" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%"   stop-color="#1a1a2e"/>
+          <stop offset="50%"  stop-color="#16213e"/>
+          <stop offset="100%" stop-color="#0f3460"/>
+        </linearGradient>
+        <filter id="glow">
+          <feGaussianBlur stdDeviation="6" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      <!-- 卡片底色 -->
+      <rect width="${CARD}" height="${CARD}" rx="28" ry="28" fill="url(#bg)"/>
+      <!-- 内光边框 -->
+      <rect x="3" y="3" width="${CARD - 6}" height="${CARD - 6}"
+            rx="25" ry="25"
+            fill="none"
+            stroke="rgba(255,255,255,0.12)"
+            stroke-width="1.5"/>
+      <!-- 四角装饰光点 -->
+      <circle cx="40"          cy="40"          r="4" fill="rgba(100,160,255,0.6)" filter="url(#glow)"/>
+      <circle cx="${CARD - 40}" cy="40"          r="4" fill="rgba(100,160,255,0.6)" filter="url(#glow)"/>
+      <circle cx="40"          cy="${CARD - 40}" r="4" fill="rgba(100,160,255,0.6)" filter="url(#glow)"/>
+      <circle cx="${CARD - 40}" cy="${CARD - 40}" r="4" fill="rgba(100,160,255,0.6)" filter="url(#glow)"/>
+    </svg>
+  `)
+
+  // QR 码本体四角加白色圆角蒙版（视觉柔化）
+  const qrRounded = await sharp(qrBuf)
+    .resize(SIZE, SIZE)
+    .composite([{
+      input: Buffer.from(`
+        <svg width="${SIZE}" height="${SIZE}" xmlns="http://www.w3.org/2000/svg">
+          <rect width="${SIZE}" height="${SIZE}" rx="18" ry="18" fill="white"/>
+        </svg>`),
+      blend: "dest-in",
+    }])
+    .png()
+    .toBuffer()
+
+  // 合并：卡片 + QR
+  let composite = await sharp({
+    create: { width: CARD, height: CARD, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+  })
+    .composite([
+      { input: cardBg },
+      { input: qrRounded, left: BORDER, top: BORDER },
+    ])
+    .png()
+    .toBuffer()
+
+  // ── 3. 拉取 QQ 头像 ────────────────────────────────────────────
+  const avatarSize = Math.round(SIZE * AVATAR_RATIO)  // ≈ 114px
+  const padding = 9                                    // 白边厚度
+  const bgSize = avatarSize + padding * 2              // ≈ 132px
+  const ringThick = 3                                  // 发光描边粗细
+
+  let avatarComposite
+  try {
+    const avatarResp = await fetch(
+      `http://q1.qlogo.cn/g?b=qq&nk=${qqNum}&s=100`,
+      { timeout: 5000 },
+    )
+    if (!avatarResp.ok) throw new Error(`avatar ${avatarResp.status}`)
+    const avatarRaw = Buffer.from(await avatarResp.arrayBuffer())
+
+    // 圆形裁切头像
+    const circleMask = Buffer.from(
+      `<svg><circle cx="${avatarSize / 2}" cy="${avatarSize / 2}" r="${avatarSize / 2}" fill="white"/></svg>`,
+    )
+    const avatarCircle = await sharp(avatarRaw)
+      .resize(avatarSize, avatarSize, { fit: "cover" })
+      .composite([{ input: circleMask, blend: "dest-in" }])
+      .png()
+      .toBuffer()
+
+    // 发光圆盘背景（白色 + 外层蓝色辉光）
+    const glowRing = Buffer.from(`
+      <svg width="${bgSize}" height="${bgSize}" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="5" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <!-- 外层蓝色辉光圈 -->
+        <circle cx="${bgSize / 2}" cy="${bgSize / 2}" r="${bgSize / 2 - 1}"
+                fill="none"
+                stroke="rgba(100,160,255,0.85)"
+                stroke-width="${ringThick}"
+                filter="url(#glow)"/>
+        <!-- 白色底盘 -->
+        <circle cx="${bgSize / 2}" cy="${bgSize / 2}" r="${bgSize / 2 - ringThick}"
+                fill="white"/>
+      </svg>
+    `)
+
+    avatarComposite = await sharp({
+      create: { width: bgSize, height: bgSize, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+    })
+      .composite([
+        { input: glowRing },
+        { input: avatarCircle, left: padding, top: padding },
+      ])
+      .png()
+      .toBuffer()
+
+  } catch (err) {
+    // 头像拉取失败 → 显示米哈游图标占位
+    logger.warn(`[makeStyledQR] 头像获取失败 (${qqNum}):`, err.message)
+    const fallbackSize = bgSize
+    avatarComposite = Buffer.from(`
+      <svg width="${fallbackSize}" height="${fallbackSize}" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="fg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#2e74ff"/>
+            <stop offset="100%" stop-color="#0e4ac4"/>
+          </linearGradient>
+        </defs>
+        <circle cx="${fallbackSize / 2}" cy="${fallbackSize / 2}" r="${fallbackSize / 2 - 2}"
+                fill="white" stroke="rgba(100,160,255,0.8)" stroke-width="3"/>
+        <circle cx="${fallbackSize / 2}" cy="${fallbackSize / 2}" r="${fallbackSize / 2 - 12}"
+                fill="url(#fg)"/>
+        <text x="${fallbackSize / 2}" y="${fallbackSize / 2 + 7}"
+              font-size="${Math.round(fallbackSize * 0.3)}"
+              text-anchor="middle" fill="white" font-family="sans-serif" font-weight="bold">米</text>
+      </svg>
+    `)
+  }
+
+  // ── 4. 将头像叠加到卡片中心 ────────────────────────────────────
+  const finalOffset = Math.round((CARD - bgSize) / 2)
+  const final = await sharp(composite)
+    .composite([{ input: avatarComposite, left: finalOffset, top: finalOffset }])
+    .png()
+    .toBuffer()
+
+  return final
+}
 
 export class miHoYoLogin extends plugin {
   constructor() {
@@ -261,9 +437,11 @@ export class miHoYoLogin extends plugin {
 
       const url = res.data.url
       ticket = res.data.ticket
-      const img = segment.image(
-        (await QR.toDataURL(url)).replace("data:image/png;base64,", "base64://"),
-      )
+
+      // ── 生成美化二维码（含 QQ 头像）──────────────────────────
+      const qrPngBuf = await makeStyledQR(url, this.e.user_id)
+      const img = segment.image(`base64://${qrPngBuf.toString("base64")}`)
+
       Running[this.e.user_id] = img
       this.reply(
         [
@@ -392,9 +570,11 @@ export class miHoYoLogin extends plugin {
 
       const url = res.data.url
       ticket = res.data.ticket
-      const img = segment.image(
-        (await QR.toDataURL(url)).replace("data:image/png;base64,", "base64://"),
-      )
+
+      // ── 生成美化二维码（含 QQ 头像）──────────────────────────
+      const qrPngBuf = await makeStyledQR(url, this.e.user_id)
+      const img = segment.image(`base64://${qrPngBuf.toString("base64")}`)
+
       Running[this.e.user_id] = img
       this.reply(
         [
