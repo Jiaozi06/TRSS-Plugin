@@ -8,21 +8,21 @@ const config = {
 
   Voice: {
     GenshinVoiceApi: "",
-    ChatWaifuApi: ""
+    ChatWaifuApi: "",
   },
 
   RealESRGAN: {
     api: "",
-    format: "jpg"
+    format: "jpg",
   },
 
   RemBG: {
-    api: ""
+    api: "",
   },
 
   miHoYoLogin: {
-    help: true
-  }
+    help: true,
+  },
 }
 
 let configData
@@ -38,7 +38,7 @@ if (await Bot.fsStat(configFile))
 config.tips = [
   "欢迎使用 TRSS Yunzai Plugin ! 作者：时雨🌌星空",
   "按 Ctrl+Q Y 保存退出",
-  "参考：https://Yunzai.TRSS.me"
+  "参考：https://git.trss.me/TRSS-Plugin",
 ]
 
 if (YAML.stringify(config) != YAML.stringify(configData))
