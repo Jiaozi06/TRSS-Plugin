@@ -19,10 +19,9 @@ export class QRCode extends plugin {
   async QRCode(e) {
     const msg = this.e.msg.replace("二维码", "").trim()
     
-    // 检查是否包含"已扫描"关键词
-    if (msg.includes("已扫描")) {
-      logger.mark(`[二维码生成] 检测到"已扫描"关键词，跳过生成`)
-      return false // 跳过执行
+    if (msg.includes("已扫描") || msg.includes("已失效")) {
+      logger.mark(`[二维码生成] 检测到跳过关键词，跳过生成`)
+      return false
     }
     
     logger.mark(`[二维码生成] 信息：${logger.blue(msg)}`)
