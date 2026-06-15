@@ -18,6 +18,13 @@ export class QRCode extends plugin {
 
   async QRCode(e) {
     const msg = this.e.msg.replace("二维码", "").trim()
+    
+    // 检查是否包含"已扫描"关键词
+    if (msg.includes("已扫描")) {
+      logger.mark(`[二维码生成] 检测到"已扫描"关键词，跳过生成`)
+      return false // 跳过执行
+    }
+    
     logger.mark(`[二维码生成] 信息：${logger.blue(msg)}`)
     const img = (await QR.toDataURL(msg)).replace("data:image/png;base64,", "base64://")
     await this.reply(segment.image(img), true)
