@@ -95,38 +95,21 @@ const errorTips = [
 const accounts = {}
 const Running = {}
 
-// ─────────────────────────────────────────────────────────────────
-//  美化二维码生成器
-//
-//  效果：
-//    · 深色渐变背景 (#1a1a2e → #16213e)
-//    · 深蓝色码点，柔和圆角
-//    · 中心叠加触发者 QQ 圆形头像（带白色光晕描边）
-//    · 整体加外框圆角卡片
-//
-//  参数：
-//    qrUrl   – 二维码内容 URL
-//    qqNum   – 触发者 QQ 号（用于拉取头像）
-//
-//  返回：PNG Buffer
-// ─────────────────────────────────────────────────────────────────
-async function makeStyledQR(qrUrl, qqNum) {
-  const SIZE = 520          // 二维码边长 (px)
-  const BORDER = 28         // 外边距（留给外框卡片）
-  const AVATAR_RATIO = 0.22 // 头像占二维码的比例
+async function makeStyledQR(qrUrl, qqNum, bot) {
+  const SIZE = 520
+  const BORDER = 28
+  const AVATAR_RATIO = 0.22
 
-  // ── 1. 生成深色系 QR ───────────────────────────────────────────
   const qrBuf = await QR.toBuffer(qrUrl, {
     width: SIZE,
     margin: 2,
-    errorCorrectionLevel: "H",   // 必须 H，为中心 logo 保留纠错能力
+    errorCorrectionLevel: "H",
     color: {
-      dark: "#1a1a2e",            // 码点颜色：深海蓝
-      light: "#f8faff",           // 背景色：极淡蓝白
+      dark: "#1a1a2e",
+      light: "#f8faff",
     },
   })
 
-  // ── 2. 外框圆角卡片背景 ────────────────────────────────────────
   const CARD = SIZE + BORDER * 2
   const cardBg = Buffer.from(`
     <svg width="${CARD}" height="${CARD}" xmlns="http://www.w3.org/2000/svg">
@@ -141,15 +124,12 @@ async function makeStyledQR(qrUrl, qqNum) {
           <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
         </filter>
       </defs>
-      <!-- 卡片底色 -->
       <rect width="${CARD}" height="${CARD}" rx="28" ry="28" fill="url(#bg)"/>
-      <!-- 内光边框 -->
       <rect x="3" y="3" width="${CARD - 6}" height="${CARD - 6}"
             rx="25" ry="25"
             fill="none"
             stroke="rgba(255,255,255,0.12)"
             stroke-width="1.5"/>
-      <!-- 四角装饰光点 -->
       <circle cx="40"          cy="40"          r="4" fill="rgba(100,160,255,0.6)" filter="url(#glow)"/>
       <circle cx="${CARD - 40}" cy="40"          r="4" fill="rgba(100,160,255,0.6)" filter="url(#glow)"/>
       <circle cx="40"          cy="${CARD - 40}" r="4" fill="rgba(100,160,255,0.6)" filter="url(#glow)"/>
@@ -157,7 +137,6 @@ async function makeStyledQR(qrUrl, qqNum) {
     </svg>
   `)
 
-  // QR 码本体四角加白色圆角蒙版（视觉柔化）
   const qrRounded = await sharp(qrBuf)
     .resize(SIZE, SIZE)
     .composite([{
@@ -170,7 +149,6 @@ async function makeStyledQR(qrUrl, qqNum) {
     .png()
     .toBuffer()
 
-  // 合并：卡片 + QR
   let composite = await sharp({
     create: { width: CARD, height: CARD, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
   })
@@ -181,22 +159,28 @@ async function makeStyledQR(qrUrl, qqNum) {
     .png()
     .toBuffer()
 
-  // ── 3. 拉取 QQ 头像 ────────────────────────────────────────────
-  const avatarSize = Math.round(SIZE * AVATAR_RATIO)  // ≈ 114px
-  const padding = 9                                    // 白边厚度
-  const bgSize = avatarSize + padding * 2              // ≈ 132px
-  const ringThick = 3                                  // 发光描边粗细
+  const avatarSize = Math.round(SIZE * AVATAR_RATIO)
+  const padding = 9
+  const bgSize = avatarSize + padding * 2
+  const ringThick = 3
 
   let avatarComposite
   try {
-    const avatarResp = await fetch(
-      `http://q1.qlogo.cn/g?b=qq&nk=${qqNum}&s=100`,
-      { timeout: 5000 },
-    )
+    let avatarUrl
+    try {
+      avatarUrl = await bot.pickFriend(qqNum).getAvatarUrl()
+    } catch (err) {
+      try {
+        avatarUrl = await bot.pickMember(qqNum, qqNum).getAvatarUrl()
+      } catch (err2) {
+        avatarUrl = `http://q1.qlogo.cn/g?b=qq&nk=${qqNum}&s=640`
+      }
+    }
+    
+    const avatarResp = await fetch(avatarUrl, { timeout: 10000 })
     if (!avatarResp.ok) throw new Error(`avatar ${avatarResp.status}`)
     const avatarRaw = Buffer.from(await avatarResp.arrayBuffer())
 
-    // 圆形裁切头像
     const circleMask = Buffer.from(
       `<svg><circle cx="${avatarSize / 2}" cy="${avatarSize / 2}" r="${avatarSize / 2}" fill="white"/></svg>`,
     )
@@ -206,7 +190,6 @@ async function makeStyledQR(qrUrl, qqNum) {
       .png()
       .toBuffer()
 
-    // 发光圆盘背景（白色 + 外层蓝色辉光）
     const glowRing = Buffer.from(`
       <svg width="${bgSize}" height="${bgSize}" xmlns="http://www.w3.org/2000/svg">
         <defs>
@@ -215,13 +198,11 @@ async function makeStyledQR(qrUrl, qqNum) {
             <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
           </filter>
         </defs>
-        <!-- 外层蓝色辉光圈 -->
         <circle cx="${bgSize / 2}" cy="${bgSize / 2}" r="${bgSize / 2 - 1}"
                 fill="none"
                 stroke="rgba(100,160,255,0.85)"
                 stroke-width="${ringThick}"
                 filter="url(#glow)"/>
-        <!-- 白色底盘 -->
         <circle cx="${bgSize / 2}" cy="${bgSize / 2}" r="${bgSize / 2 - ringThick}"
                 fill="white"/>
       </svg>
@@ -238,7 +219,6 @@ async function makeStyledQR(qrUrl, qqNum) {
       .toBuffer()
 
   } catch (err) {
-    // 头像拉取失败 → 显示米哈游图标占位
     logger.warn(`[makeStyledQR] 头像获取失败 (${qqNum}):`, err.message)
     const fallbackSize = bgSize
     avatarComposite = Buffer.from(`
@@ -260,7 +240,6 @@ async function makeStyledQR(qrUrl, qqNum) {
     `)
   }
 
-  // ── 4. 将头像叠加到卡片中心 ────────────────────────────────────
   const finalOffset = Math.round((CARD - bgSize) / 2)
   const final = await sharp(composite)
     .composite([{ input: avatarComposite, left: finalOffset, top: finalOffset }])
@@ -438,8 +417,7 @@ export class miHoYoLogin extends plugin {
       const url = res.data.url
       ticket = res.data.ticket
 
-      // ── 生成美化二维码（含 QQ 头像）──────────────────────────
-      const qrPngBuf = await makeStyledQR(url, this.e.user_id)
+      const qrPngBuf = await makeStyledQR(url, this.e.user_id, this.e.bot)
       const img = segment.image(`base64://${qrPngBuf.toString("base64")}`)
 
       Running[this.e.user_id] = img
@@ -571,8 +549,7 @@ export class miHoYoLogin extends plugin {
       const url = res.data.url
       ticket = res.data.ticket
 
-      // ── 生成美化二维码（含 QQ 头像）──────────────────────────
-      const qrPngBuf = await makeStyledQR(url, this.e.user_id)
+      const qrPngBuf = await makeStyledQR(url, this.e.user_id, this.e.bot)
       const img = segment.image(`base64://${qrPngBuf.toString("base64")}`)
 
       Running[this.e.user_id] = img
