@@ -32,6 +32,10 @@ function md5(data) {
   return crypto.createHash("md5").update(data).digest("hex")
 }
 
+function genDeviceFp() {
+  return md5(crypto.randomUUID()).slice(0, 13)
+}
+
 function ds(data) {
   const t = Math.floor(Date.now() / 1000)
   const r = random_string(6)
@@ -70,19 +74,34 @@ function app_request(url, { data, device_id }) {
     method: "post",
     body: data ? JSON.stringify(data) : "{}",
     headers: {
-      "User-Agent": "HYPContainer/1.3.3.182",
+      "User-Agent": "Hyperion/551 CFNetwork/3860.500.112 Darwin/25.4.0",
+      "Content-Type": "application/json",
       "x-rpc-app_id": "ddxf5dufpuyo",
       "x-rpc-client_type": "3",
+      "x-rpc-game_biz": "bbs_cn",
       "x-rpc-device_id": device_id,
+      "x-rpc-device_fp": genDeviceFp(),
+      "x-rpc-device_name": "HUAWEI Nova",
+      "x-rpc-device_model": "Nova 5 Pro",
+      "x-rpc-device_os": "Android 12",
+      "x-rpc-sdk_version": "2.54.0",
     },
   })
 }
 
 const web_headers = {
   "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "Content-Type": "application/json",
   "x-rpc-app_id": "bll8iq97cem8",
-  "x-rpc-device_id": random_string(16),
+  "x-rpc-client_type": "4",
+  "x-rpc-game_biz": "bbs_cn",
+  "x-rpc-device_id": crypto.randomUUID(),
+  "x-rpc-device_fp": genDeviceFp(),
+  "x-rpc-device_name": "Chrome",
+  "x-rpc-device_model": "Chrome 120.0.0.0",
+  "x-rpc-device_os": "Windows 10 64-bit",
+  "x-rpc-sdk_version": "2.54.0",
 }
 
 const errorTips = [
@@ -318,7 +337,7 @@ export class miHoYoLogin extends plugin {
       password: encrypt_data(password),
     }
 
-    const url = "https://passport-api.mihoyo.com/account/ma-cn-passport/app/loginByPassword"
+    const url = "https://passport-api.miyoushe.com/account/ma-cn-passport/app/loginByPassword"
     let res = await request(url, { data, aigis: "" })
     const aigis_data = JSON.parse(res.headers.get("x-rpc-aigis"))
     res = await res.json()
@@ -361,7 +380,7 @@ export class miHoYoLogin extends plugin {
     const stoken = `stoken=${res.data.token.token};stuid=${res.data.user_info.aid};mid=${res.data.user_info.mid}`
 
     let cookie = await request(
-      `https://passport-api.mihoyo.com/account/auth/api/getCookieAccountInfoBySToken?stoken=${res.data.token.token}&uid=${res.data.user_info.aid}`,
+      `https://passport-api.miyoushe.com/account/auth/api/getCookieAccountInfoBySToken?stoken=${res.data.token.token}&uid=${res.data.user_info.aid}`,
       { cookie: stoken },
     )
     cookie = await cookie.json()
@@ -408,7 +427,7 @@ export class miHoYoLogin extends plugin {
     let res, ticket
     try {
       res = await app_request(
-        "https://passport-api.mihoyo.com/account/ma-cn-passport/app/createQRLogin",
+        "https://passport-api.miyoushe.com/account/ma-cn-passport/app/createQRLogin",
         { device_id },
       )
       res = await res.json()
@@ -452,7 +471,7 @@ export class miHoYoLogin extends plugin {
         )
       try {
         res = await app_request(
-          "https://passport-api.mihoyo.com/account/ma-cn-passport/app/queryQRLoginStatus",
+          "https://passport-api.miyoushe.com/account/ma-cn-passport/app/queryQRLoginStatus",
           {
             device_id,
             data: { ticket },
@@ -513,7 +532,7 @@ export class miHoYoLogin extends plugin {
 
       cookie.push(`stoken=${token};stuid=${uid};mid=${mid}`)
       res = await request(
-        `https://passport-api.mihoyo.com/account/auth/api/getCookieAccountInfoBySToken?stoken=${token}&uid=${uid}&mid=${mid}`,
+        `https://passport-api.miyoushe.com/account/auth/api/getCookieAccountInfoBySToken?stoken=${token}&uid=${uid}&mid=${mid}`,
         { cookie: cookie[0] },
       )
       res = await res.json()
@@ -540,7 +559,7 @@ export class miHoYoLogin extends plugin {
     let res, ticket
     try {
       res = await fetch(
-        "https://passport-api.mihoyo.com/account/ma-cn-passport/web/createQRLogin",
+        "https://passport-api.miyoushe.com/account/ma-cn-passport/web/createQRLogin",
         { headers: web_headers, method: "post", body: "{}" },
       )
       res = await res.json()
@@ -585,7 +604,7 @@ export class miHoYoLogin extends plugin {
         )
       try {
         res = await fetch(
-          "https://passport-api.mihoyo.com/account/ma-cn-passport/web/queryQRLoginStatus",
+          "https://passport-api.miyoushe.com/account/ma-cn-passport/web/queryQRLoginStatus",
           { headers: web_headers, method: "post", body: JSON.stringify({ ticket }) },
         )
         cookie = res.headers.getSetCookie()
@@ -633,7 +652,17 @@ export class miHoYoLogin extends plugin {
 
     if (!cookie?.length) return this.reply(errorTips, true, { recallMsg: 60 })
 
-    cookie = cookie.map(i => i.split(";")[0]).join(";")
+    const seen = new Set()
+    cookie = cookie
+      .map(i => i.split(";")[0])
+      .filter(c => {
+        if (!c.includes("=")) return false
+        const [name] = c.split("=")
+        if (seen.has(name)) return false
+        seen.add(name)
+        return true
+      })
+      .join(";")
     this.makeMessage(cookie)
     if (this.e.isPrivate)
       this.reply(await Bot.makeForwardArray(["登录完成，以下是 Cookie，将会自动绑定", cookie]))

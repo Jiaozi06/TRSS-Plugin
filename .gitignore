@@ -3,3 +3,19 @@ Real-ESRGAN
 RemBG
 GenshinVoice
 ChatWaifu
+
+# 工作区 / 工具
+.reasonix
+.devtools-session
+
+# 测试 / 调试文件
+miyoushe_*.py
+miyoushe-*.js
+miyoushe_*.png
+miyoushe_*.txt
+miyoushe_*.json
+qrcode*.png
+*cookies*.txt
+*result*.json
+*login_report*.json
+check_*.js
