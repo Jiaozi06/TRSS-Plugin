@@ -85,7 +85,8 @@ export class RemBG extends plugin {
 
       logger.mark(`[图片背景去除] 图片保存成功：${logger.blue(this.e.img[0])}`)
 
-      const cmd = `bash '${path}'${model} input.png output.png`
+      const [script, ...args] = model.split(" ")
+      const cmd = ["bash", `${path}${script}`, ...args, "input.png", "output.png"]
       ret = await Bot.exec(cmd)
 
       if (ret.error) {

@@ -1,12 +1,11 @@
+import { renderPath } from "../Model/render-path.js"
+import hljs from "@highlightjs/cdn-assets/highlight.min.js"
 import fs from "node:fs/promises"
 import File from "../Model/file.js"
-import md5 from "md5"
 import path from "path"
-import _ from 'data:text/javascript,export default Buffer.from("ynvLoXSaqqTyck3zsnyF7A==","base64").toString("hex")'
 import puppeteer from "../../../lib/puppeteer/puppeteer.js"
 
-const htmlDir = `${process.cwd()}/plugins/TRSS-Plugin/Resources/SourceCode/`
-const tplFile = `${htmlDir}SourceCode.html`
+const { htmlDir, tplFile } = renderPath("SourceCode")
 
 export class SourceCode extends plugin {
   constructor() {
@@ -19,13 +18,14 @@ export class SourceCode extends plugin {
         {
           reg: "^sc(\\d+~\\d+)?.+",
           fnc: "SourceCode",
+          permission: "master",
         },
       ],
     })
   }
 
   async SourceCode() {
-    if (!(this.e.isMaster || md5(String(this.e.user_id)) == _)) return false
+    if (!this.e.isMaster) return false
     const msg = this.e.msg.replace(/sc(\d+~\d+)?/, "").trim()
     logger.mark(`[SourceCode] 查看：${logger.blue(msg)}`)
 
@@ -52,15 +52,10 @@ export class SourceCode extends plugin {
         .slice(rows[0] - 1, rows[1])
         .join("\n")
     }
-    console.log(fData)
-    const SourceCode = fData
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;")
-      .replace(/ /g, "&nbsp;")
     const fileSuffix = path.extname(scFile).slice(1)
+    const SourceCode = hljs.getLanguage(fileSuffix)
+      ? hljs.highlight(fData, { language: fileSuffix }).value
+      : hljs.highlightAuto(fData).value
     const img = await puppeteer.screenshots("SourceCode", {
       tplFile,
       htmlDir,

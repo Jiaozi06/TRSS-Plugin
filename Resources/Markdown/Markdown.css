@@ -1,64 +1,67 @@
-@import url(../common/common.css);
-
-
-.box {
-  padding: 30px;
-  background: rgba(255, 255, 255, 0.6);
-  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+@import url("../common/common.css");
+.document > *:first-child {
+  margin-top: 0;
 }
-
-body {
-  width: max-content;
-  max-width: 800px;
+.document > *:last-child {
+  margin-bottom: 0;
 }
-
-code:not([data-highlighted=yes]) {
-  background: #282C34;
-  color: #F8F8E5;
-  font-size: 85%;
-  border-radius: 6px;
-  padding: .1em .4em;
-  margin: 0;
-  font-family: inherit;
+.document h1 {
+  font-size: 28px;
 }
-
-table:not(code table) {
+.document h2 {
+  font-size: 23px;
+  border-bottom: 1px solid #ece9e4;
+  padding-bottom: 10px;
+  margin-top: 30px;
+}
+.document h3 {
+  font-size: 19px;
+}
+.document p {
+  margin: 14px 0;
+}
+.document a {
+  color: #557b9d;
+  text-decoration: none;
+}
+.document blockquote {
+  margin: 20px 0;
+  padding: 12px 20px;
+  border-left: 3px solid #cb8b7c;
+  background: #faf5f1;
+  color: #7c7069;
+}
+.document pre {
+  background: #222a38;
+  color: #e8ecf2;
+  padding: 20px;
+  border-radius: 12px;
+  font-size: 15px;
+}
+.document :not(pre) > code {
+  background: #f0ede8;
+  padding: 3px 6px;
+  border-radius: 5px;
+  font-size: 90%;
+}
+.document table {
+  width: 100%;
   border-collapse: collapse;
-  margin-bottom: 16px;
+  margin: 20px 0;
 }
-
-table:not(code table) th,
-table:not(code table) td {
-  border: 1px solid #dfe2e5;
-  padding: 6px 13px;
-  background-color: #fff;
+.document th,
+.document td {
+  padding: 12px 15px;
+  border-bottom: 1px solid #eae7e1;
+  text-align: left;
 }
-
-table:not(code table) tr:nth-child(even) td {
-  background-color: #F6F8FA;
+.document th {
+  background: #f5f2ed;
+  color: #746456;
 }
-
-h1,
-h2 {
-  border-bottom: 0.5px solid #9099a3;
-}
-
-ul {
-  padding-left: 30px;
-}
-
-blockquote {
-  padding-left: 15px;
-  color: #636c76;
-  border-left: 5px solid #D0D7DE;
-  margin: 0;
-}
-
-img {
+.document img {
   max-width: 100%;
-  height: auto;
+}
+.document li {
+  margin: 5px 0;
 }

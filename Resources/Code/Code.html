@@ -1,29 +1,24 @@
-<!DOCTYPE html>
-<html lang="en">
-
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Document</title>
-  <link rel="stylesheet" href="{{htmlDir}}../../node_modules/@highlightjs/cdn-assets/styles/atom-one-dark.css">
-  <link rel="stylesheet" type="text/css" href="{{htmlDir}}Code.css">
-</head>
-
-<body>
-
-  <div class="container">
-    <div class="title">代码展示框</div>
-    <div class="box">{{@Code}}</div>
-    <div class="copyright">TRSS-Plugin</div>
-  </div>
-</body>
-<script>
-  const container = document.querySelector(".container")
-  const img = new Image()
-  img.onload = function () {
-    container.style.backgroundImage = 'url("http://dir.dengfenglai.icu")'
-  }
-  img.src = "http://dir.dengfenglai.icu"
-</script>
-
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline' file:; img-src data:; font-src file:"
+    />
+    <link rel="stylesheet" href="{{htmlDir}}Code.css" />
+  </head>
+  <body>
+    <main id="container" class="container">
+      <div class="eyebrow">TRSS / CONSOLE</div>
+      <div class="title">{{if title}}{{title}}{{else}}运行输出{{/if}}</div>
+      <div class="subtitle">命令结果与系统记录</div>
+      <div class="accent"></div>
+      <section class="box terminal">
+        <div class="terminal-bar"><i></i><i></i><i></i></div>
+        {{@Code}}
+      </section>
+      <footer class="copyright"><span>TRSS PLUGIN</span><span>简洁 · 清晰</span></footer>
+    </main>
+  </body>
 </html>

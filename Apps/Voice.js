@@ -112,7 +112,7 @@ export class Voice extends plugin {
   async Voice() {
     const msg = this.e.msg.split("说")
     let speaker = msg.shift()
-    const text = msg.join("说").replace("'", "").trim()
+    const text = msg.join("说").trim()
 
     let url
     let path
@@ -158,7 +158,7 @@ export class Voice extends plugin {
     Running = true
 
     if (path) {
-      const cmd = `poetry run python main.py output.wav ${speakerid} '${text}'`
+      const cmd = ["poetry", "run", "python", "main.py", "output.wav", String(speakerid), text]
       const ret = await Bot.exec(cmd, { cwd: path })
 
       if (ret.error) {

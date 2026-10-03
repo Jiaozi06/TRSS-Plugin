@@ -1,87 +1,68 @@
+import { renderPath } from "../Model/render-path.js"
 import puppeteer from "../../../lib/puppeteer/puppeteer.js"
 import { AnsiUp } from "ansi_up"
-const ansi_up = new AnsiUp()
+import os from "node:os"
+import { pbkdf2 } from "node:crypto"
+import { promisify } from "node:util"
 
-const htmlDir = `${process.cwd()}/plugins/TRSS-Plugin/Resources/Code/`,
-  tplFile = `${htmlDir}Code.html`,
-  errorTips = "未使用脚本安装，此功能出错属于正常情况\nhttps://TRSS.me",
-  cmds = `fastfetch --pipe false`,
-  cmd = `fastfetch --pipe -l none`
-
-let benchcmd = "bash <(curl -L bench.sh)",
-  Running
-
-if (process.platform == "win32") benchcmd = `bash -c "${benchcmd}"`
+const ansi = new AnsiUp()
+const { htmlDir, tplFile } = renderPath("Code")
+let running = false
 
 export class SystemInfo extends plugin {
   constructor() {
     super({
       name: "系统信息",
-      dsc: "系统信息",
+      dsc: "本机系统信息与轻量测试",
       event: "message",
       priority: 10,
       rule: [
-        {
-          reg: "^#?系统信息$",
-          fnc: "SystemInfo",
-        },
-        {
-          reg: "^#?系统信息图片$",
-          fnc: "SystemInfoPic",
-        },
-        {
-          reg: "^#?系统测试$",
-          fnc: "SystemBench",
-        },
+        { reg: "^#?系统信息$", fnc: "SystemInfo", permission: "master" },
+        { reg: "^#?系统信息图片$", fnc: "SystemInfoPic", permission: "master" },
+        { reg: "^#?系统测试$", fnc: "SystemBench", permission: "master" },
       ],
     })
   }
-
-  async SystemInfo(e) {
-    const ret = await Bot.exec(cmd)
-
-    if (ret.error) {
-      logger.error(`系统信息错误：${logger.red(ret.error)}`)
-      await this.reply(`系统信息错误：${ret.error}`, true)
-      await this.reply(errorTips)
-    }
-
-    await this.reply(ret.stdout.trim(), true)
+  info() {
+    return [
+      `系统  ${os.type()} ${os.release()} · ${os.arch()}`,
+      `处理器  ${os.cpus()[0]?.model || "未知"} · ${os.cpus().length} 核`,
+      `内存  可用 ${(os.freemem() / 2 ** 30).toFixed(2)} / ${(os.totalmem() / 2 ** 30).toFixed(2)} GB`,
+      `运行时  Node.js ${process.version}`,
+      `系统运行  ${(os.uptime() / 3600).toFixed(1)} 小时`,
+    ].join("\n")
   }
-
-  async SystemInfoPic(e) {
-    const ret = await Bot.exec(cmds)
-
-    if (ret.error) {
-      logger.error(`系统信息错误：${logger.red(ret.error)}`)
-      await this.reply(`系统信息错误：${ret.error}`, true)
-      await this.reply(errorTips)
-    }
-
-    const Code = await ansi_up.ansi_to_html(ret.stdout.trim())
-    const img = await puppeteer.screenshot("Code", { tplFile, htmlDir, Code })
-    await this.reply(img, true)
+  async picture(text, title) {
+    if (!this.e.isMaster) return false
+    const img = await puppeteer.screenshot("TRSS-SystemInfo", {
+      tplFile,
+      htmlDir,
+      Code: ansi.ansi_to_html(text),
+      title,
+    })
+    return this.reply(img || text, true)
   }
-
-  async SystemBench(e) {
-    if (Running) {
-      await this.reply("正在测试，请稍等……", true)
-      return false
+  SystemInfo() {
+    if (!this.e.isMaster) return false
+    return this.reply(this.info(), true)
+  }
+  SystemInfoPic() {
+    if (!this.e.isMaster) return false
+    return this.picture(this.info(), "系统信息")
+  }
+  async SystemBench() {
+    if (!this.e.isMaster) return false
+    if (running) return this.reply("正在测试，请稍等……", true)
+    running = true
+    try {
+      const start = performance.now()
+      await promisify(pbkdf2)("TRSS-local-benchmark", "local-only", 100000, 32, "sha256")
+      return await this.picture(
+        `${this.info()}\n\nPBKDF2-SHA256 · 100,000 次\n耗时  ${(performance.now() - start).toFixed(1)} ms\n\n轻量本机测试，不代表完整性能评分。`,
+        "本机性能测试",
+      )
+    } finally {
+      running = false
     }
-    Running = true
-    await this.reply("开始测试，请稍等……", true)
-
-    const ret = await Bot.exec(benchcmd)
-
-    if (ret.error) {
-      logger.error(`系统测试错误：${logger.red(ret.error)}`)
-      await this.reply(`系统测试错误：${ret.error}`, true)
-      await this.reply(errorTips)
-    }
-
-    const Code = await ansi_up.ansi_to_html(ret.stdout.trim())
-    const img = await puppeteer.screenshot("Code", { tplFile, htmlDir, Code })
-    await this.reply(img, true)
-    Running = false
   }
 }
