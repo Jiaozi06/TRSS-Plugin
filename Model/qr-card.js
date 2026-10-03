@@ -43,12 +43,11 @@ export function qrSvg(text) {
 }
 
 export function cardData(text, { login = false, userId = "", botId = "" } = {}) {
-  const masked = String(userId).length > 4 ? `****${String(userId).slice(-4)}` : "****"
   return {
     login,
     title: login ? "米游社扫码登录" : "二维码",
     subtitle: login ? "用米游社 App 扫码并在手机上确认" : "把信息放进一张清晰的卡片",
-    identity: login ? `${botId || "Bot"}:${masked}` : "",
+    identity: login ? `${botId || "Bot"}:${String(userId)}` : "",
     qr: `data:image/svg+xml;base64,${Buffer.from(qrSvg(text)).toString("base64")}`,
   }
 }
