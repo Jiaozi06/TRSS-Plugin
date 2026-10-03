@@ -1,4 +1,5 @@
 import { renderPath } from "../Model/render-path.js"
+import { consoleData } from "../Model/console-card.js"
 import puppeteer from "../../../lib/puppeteer/puppeteer.js"
 import hljs from "@highlightjs/cdn-assets/highlight.min.js"
 import { AnsiUp } from "ansi_up"
@@ -111,7 +112,9 @@ export class RemoteCommand extends plugin {
     const cmd = this.e.msg.replace("rjp", "").trim()
 
     logger.mark(`[远程命令] 执行Js：${logger.blue(cmd)}`)
+    const started = Date.now()
     const ret = await this.evalSync(cmd, data => Bot.Loging(data))
+    const elapsed = Date.now() - started
     logger.mark(`[远程命令]\n${ret.stdout}\n${logger.red(ret.error?.stack)}`)
 
     if (!ret.stdout && !ret.error) return this.reply("命令执行完成，没有返回值", true)
@@ -122,6 +125,12 @@ export class RemoteCommand extends plugin {
 
     Code = await ansi_up.ansi_to_html(Code.join("\n\n"))
     const img = await puppeteer.screenshots("Code", {
+      ...consoleData({
+        command: cmd,
+        language: "javascript",
+        failed: !!ret.error,
+        duration: elapsed,
+      }),
       tplFile,
       htmlDir,
       Code,
@@ -145,7 +154,9 @@ export class RemoteCommand extends plugin {
   async ShellPic() {
     if (!this.e.isMaster) return false
     const cmd = this.e.msg.replace("rcp", "").trim()
+    const started = Date.now()
     const ret = await Bot.exec(...prompt(cmd))
+    const elapsed = Date.now() - started
 
     if (!ret.stdout && !ret.stderr && !ret.error)
       return this.reply("命令执行完成，没有返回值", true)
@@ -156,8 +167,12 @@ export class RemoteCommand extends plugin {
     else if (ret.stderr) Code.push(`标准错误输出：\n${ret.stderr}`)
 
     Code = await ansi_up.ansi_to_html(Code.join("\n\n"))
-    Code = inspectCmd(hljs.highlight(cmd, { language: langCmd }).value, Code)
-    const img = await puppeteer.screenshot("Code", { tplFile, htmlDir, Code })
+    const img = await puppeteer.screenshot("Code", {
+      ...consoleData({ command: cmd, language: langCmd, failed: !!ret.error, duration: elapsed }),
+      tplFile,
+      htmlDir,
+      Code,
+    })
     return this.reply(img, true)
   }
 
@@ -166,22 +181,34 @@ export class RemoteCommand extends plugin {
     const rets = [],
       echo = /^[dmf]mp/.test(this.e.msg)
     let Code = []
+    let failed = false
     try {
       for (const i of msg) {
         const ret = await this.reply(i)
         rets.push(ret)
+        failed ||= !!(ret?.error && (Array.isArray(ret.error) ? ret.error.length : true))
 
         if (echo) Code.push(`发送：${Bot.Loging(i)}\n返回：${Bot.Loging(ret)}`)
         else if (ret?.error && (Array.isArray(ret.error) ? ret.error.length : true))
           Code.push(`发送：${Bot.Loging(i)}\n错误：${Bot.Loging(ret.error)}`)
       }
     } catch (err) {
+      failed = true
       Code.push(`发送：${Bot.Loging(msg)}\n错误：${Bot.Loging(err)}`)
     }
 
     if (Code.length) {
       Code = await ansi_up.ansi_to_html(Code.join("\n\n"))
-      const img = await puppeteer.screenshot("Code", { tplFile, htmlDir, Code })
+      const img = await puppeteer.screenshot("Code", {
+        ...consoleData({
+          command: this.e.msg.replace(/^[dmf]mp?/, "").trim(),
+          language: "javascript",
+          failed,
+        }),
+        tplFile,
+        htmlDir,
+        Code,
+      })
       this.reply(img, true)
     }
     return rets

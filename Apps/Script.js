@@ -1,4 +1,5 @@
 import { renderPath } from "../Model/render-path.js"
+import { consoleData } from "../Model/console-card.js"
 import puppeteer from "../../../lib/puppeteer/puppeteer.js"
 import { AnsiUp } from "ansi_up"
 const ansi_up = new AnsiUp()
@@ -27,17 +28,30 @@ export class Script extends plugin {
 
   async execTask(e, cmd) {
     if (!this.e.isMaster) return false
+    const started = Date.now()
     const ret = await Bot.exec(cmd)
+    const display = consoleData({
+      command: this.e.msg.replace("脚本执行", "").trim(),
+      language: "bash",
+      failed: !!ret.error,
+      duration: Date.now() - started,
+    })
 
     if (ret.stdout) {
       const Code = await ansi_up.ansi_to_html(ret.stdout.trim())
-      const img = await puppeteer.screenshot("Code", { tplFile, htmlDir, Code })
+      const img = await puppeteer.screenshot("Code", { ...display, tplFile, htmlDir, Code })
       await this.reply(img, true)
     }
 
     if (ret.stderr) {
       const Code = await ansi_up.ansi_to_html(ret.stderr.trim())
-      const img = await puppeteer.screenshot("Code", { tplFile, htmlDir, Code })
+      const img = await puppeteer.screenshot("Code", {
+        ...display,
+        stream: "STDERR",
+        tplFile,
+        htmlDir,
+        Code,
+      })
       await this.reply(["标准错误输出：", img], true)
     }
 

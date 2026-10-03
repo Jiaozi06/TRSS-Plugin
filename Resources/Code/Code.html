@@ -9,16 +9,60 @@
     <link rel="stylesheet" href="{{htmlDir}}Code.css" />
   </head>
   <body>
-    <main id="container" class="container">
-      <div class="eyebrow">TRSS / CONSOLE</div>
-      <div class="title">{{if title}}{{title}}{{else}}运行输出{{/if}}</div>
-      <div class="subtitle">命令结果与系统记录</div>
-      <div class="accent"></div>
-      <section class="box terminal">
-        <div class="terminal-bar"><i></i><i></i><i></i></div>
-        {{@Code}}
-      </section>
-      <footer class="copyright"><span>TRSS PLUGIN</span><span>简洁 · 清晰</span></footer>
+    <main id="container">
+      <article class="console {{if state === 'error'}}is-error{{/if}}">
+        <div class="watermark">RUN</div>
+        <header class="header">
+          <div class="brand">
+            <div class="brand-icon">&lt;/&gt;</div>
+            <div>
+              <div class="brand-name">TRSS<span>.</span></div>
+              <div class="brand-sub">REMOTE RUNNER</div>
+            </div>
+          </div>
+          <div class="header-info">
+            {{if clock}}
+            <div class="time"><b>{{clock}}</b><span>CST / UTC +8</span></div>
+            {{/if}}
+            <div class="state"><i></i>{{if stateLabel}}{{stateLabel}}{{else}}OUTPUT{{/if}}</div>
+          </div>
+        </header>
+        {{if title}}
+        <div class="report-title">{{title}}</div>
+        {{/if}} {{if Command}}
+        <section class="command-section">
+          <div class="section-heading">
+            <span class="label">COMMAND</span><span class="language">{{language}}</span>
+          </div>
+          <div class="command-box">
+            <span class="prompt">$</span>
+            <pre class="command-code">{{@Command}}</pre>
+          </div>
+        </section>
+        {{/if}}
+        <div class="pipeline">
+          <span>&gt;_ {{if Command}}EXECUTION{{else}}CONSOLE{{/if}}</span><i></i>{{if
+          duration}}<span class="elapsed">{{duration}}</span><i class="short-line"></i>{{/if}}<span
+            >{{if stream}}{{stream}}{{else}}STDOUT{{/if}}</span
+          >
+        </div>
+        <section class="output-section">
+          <div class="section-heading">
+            <span class="label">OUTPUT</span
+            ><span class="output-hint"
+              >{{if state === 'error'}}EXECUTION FAILED{{else}}RESULT{{/if}}</span
+            >
+          </div>
+          <div class="output-box"><pre class="output-code">{{@Code}}</pre></div>
+        </section>
+        <footer>
+          <div class="footer-brand"><span>◇</span> TRSS-Plugin <i>/</i> Console</div>
+          <div class="footer-meta">
+            {{if calendar}}{{calendar}}{{else}}LOCAL RENDER{{/if}}<span>·</span> {{if state ===
+            'error'}}ERROR{{else}}END OF OUTPUT{{/if}}
+          </div>
+        </footer>
+      </article>
     </main>
   </body>
 </html>

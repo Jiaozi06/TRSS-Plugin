@@ -1,4 +1,5 @@
 import { renderPath } from "../Model/render-path.js"
+import { consoleData } from "../Model/console-card.js"
 import puppeteer from "../../../lib/puppeteer/puppeteer.js"
 import { AnsiUp } from "ansi_up"
 import os from "node:os"
@@ -35,6 +36,7 @@ export class SystemInfo extends plugin {
   async picture(text, title) {
     if (!this.e.isMaster) return false
     const img = await puppeteer.screenshot("TRSS-SystemInfo", {
+      ...consoleData({ title, language: "system" }),
       tplFile,
       htmlDir,
       Code: ansi.ansi_to_html(text),
