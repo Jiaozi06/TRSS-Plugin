@@ -22,6 +22,8 @@ const config = {
 
   miHoYoLogin: {
     help: true,
+    // 扫码登录样式：classic 原样式，pdd 拼多多助力样式
+    qrStyle: "classic",
   },
 }
 

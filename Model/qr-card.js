@@ -2,7 +2,11 @@ import QR from "qrcode"
 import puppeteer from "../../../lib/puppeteer/puppeteer.js"
 import TemplateRenderer from "../../../lib/renderer/Renderer.js"
 import { randomUUID } from "node:crypto"
-import { unlink } from "node:fs/promises"
+import { readFile, unlink } from "node:fs/promises"
+import { fileURLToPath } from "node:url"
+
+const pddTplFile = fileURLToPath(new URL("../Resources/QRCode/pdd.html", import.meta.url))
+let miyousheIcon
 
 const tplFile = "TRSS-Plugin:inline-qr-card"
 TemplateRenderer.html[tplFile] = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">
@@ -14,7 +18,7 @@ TemplateRenderer.html[tplFile] = `<!DOCTYPE html><html lang="zh-CN"><head><meta 
 .notes{margin-top:20px;background:#fff;border:1px solid #eeebe6;border-radius:20px;padding:20px 24px;font-size:14px;line-height:1.9;color:#89857f}.notes p{margin:4px 0}.important{color:#b65a4e;font-weight:600}.footer{margin-top:22px;display:flex;justify-content:space-between;font-size:11px;letter-spacing:2px;color:#aaa297}
 </style></head><body><main id="container"><header class="heading"><div class="eyebrow">TRSS / {{if login}}ACCOUNT{{else}}QRCODE{{/if}}</div><h1>{{title}}</h1><div class="subtitle">{{subtitle}}</div></header><section class="card"><div class="frame"><img class="qr" src="{{qr}}"></div>{{if identity}}<div class="identity">标识码 &nbsp; <b>{{identity}}</b></div>{{/if}}<div class="expiry">{{if login}}请尽快扫码，过期后重新获取{{else}}长按识别或使用相机扫描{{/if}}</div></section>{{if login}}<section class="notes"><p class="important">· 请核对标识码，仅扫描本人发起的登录二维码。</p><p>· 使用米游社 App 扫码，并在手机上确认登录。</p><p>· 授权凭据将用于机器人账号绑定，请勿转发此二维码。</p><p>· 发送「米哈游登录终止」可取消本次登录。</p></section>{{/if}}<footer class="footer"><span>TRSS PLUGIN</span><span>{{if login}}SCAN & CONFIRM{{else}}SCAN & DISCOVER{{/if}}</span></footer></main></body></html>`
 
-export function qrSvg(text) {
+export function qrSvg(text, { square = false } = {}) {
   const { modules } = QR.create(text, { errorCorrectionLevel: "H" })
   const n = modules.size
   const quiet = 4
@@ -28,6 +32,10 @@ export function qrSvg(text) {
       const finder = (x < 7 && y < 7) || (x >= n - 7 && y < 7) || (x < 7 && y >= n - 7)
       const px = x + quiet,
         py = y + quiet
+      if (square) {
+        shapes.push(`<rect x="${px}" y="${py}" width="1" height="1" fill="black"/>`)
+        continue
+      }
       if (finder) {
         const localX = x >= n - 7 ? x - (n - 7) : x
         const localY = y >= n - 7 ? y - (n - 7) : y
@@ -42,22 +50,27 @@ export function qrSvg(text) {
   return shapes.join("") + "</svg>"
 }
 
-export function cardData(text, { login = false, userId = "", botId = "" } = {}) {
+export function cardData(text, { login = false, userId = "", botId = "", style = "classic" } = {}) {
   return {
     login,
     title: login ? "米游社扫码登录" : "二维码",
     subtitle: login ? "用米游社 App 扫码并在手机上确认" : "把信息放进一张清晰的卡片",
     identity: login ? `${botId || "Bot"}:${String(userId)}` : "",
-    qr: `data:image/svg+xml;base64,${Buffer.from(qrSvg(text)).toString("base64")}`,
+    qr: `data:image/svg+xml;base64,${Buffer.from(qrSvg(text, { square: login && style === "pdd" })).toString("base64")}`,
   }
 }
 
 export async function renderQR(text, options = {}) {
   const saveId = randomUUID()
   try {
+    const pdd = options.login && options.style === "pdd"
+    if (pdd && !miyousheIcon) {
+      miyousheIcon = `data:image/png;base64,${(await readFile(new URL("../Resources/QRCode/miyoushe.png", import.meta.url))).toString("base64")}`
+    }
     const image = await puppeteer.screenshot("TRSS-QRCode", {
       ...cardData(text, options),
-      tplFile,
+      miyousheIcon: pdd ? miyousheIcon : "",
+      tplFile: pdd ? pddTplFile : tplFile,
       saveId,
       imgType: "png",
       pageGotoParams: { waitUntil: "load", timeout: 30000 },

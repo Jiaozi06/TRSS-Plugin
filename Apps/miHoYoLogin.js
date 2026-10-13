@@ -261,7 +261,7 @@ export class miHoYoLogin extends plugin {
 
       const url = res.data.url
       ticket = res.data.ticket
-      const img = await renderQR(url, { login: true, userId: this.e.user_id, botId: this.e.self_id })
+      const img = await renderQR(url, { login: true, userId: this.e.user_id, botId: this.e.self_id, style: config.miHoYoLogin.qrStyle })
       Running[this.e.user_id] = img
       this.reply(
         [
@@ -390,7 +390,7 @@ export class miHoYoLogin extends plugin {
 
       const url = res.data.url
       ticket = res.data.ticket
-      const img = await renderQR(url, { login: true, userId: this.e.user_id, botId: this.e.self_id })
+      const img = await renderQR(url, { login: true, userId: this.e.user_id, botId: this.e.self_id, style: config.miHoYoLogin.qrStyle })
       Running[this.e.user_id] = img
       this.reply(
         [

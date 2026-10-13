@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; width: 720px; background: #090909; font-family: "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
+    #container { width: 720px; padding: 58px 52px 32px; background: radial-gradient(ellipse at 50% 38%, #2c1712 0, #090909 66%); }
+    .card { position: relative; padding: 48px 40px 42px; border-radius: 40px; background: linear-gradient(145deg, #f03e49, #ef674b); text-align: center; }
+    h1 { margin: 0; color: #fff4d6; font-size: 34px; font-weight: 700; white-space: nowrap; }
+    h1 strong { color: #ffe681; font-size: 40px; }
+    .subtitle { margin: 20px 0 30px; color: #ffdcc0; font-size: 25px; }
+    .frame { position: relative; padding: 24px; border-radius: 36px; background: #fff0d0; box-shadow: 0 12px 20px #98382b40; }
+    .frame::before, .frame::after { content: ""; position: absolute; background: #fff0d0; border-radius: 24px; z-index: 0; }
+    .frame::before { inset: 18px -9px; }
+    .frame::after { inset: -9px 18px; }
+    .qr { position: relative; z-index: 1; display: block; width: 100%; border-radius: 16px; }
+    .spark { position: absolute; color: #fffbd0; font-size: 64px; line-height: 1; text-shadow: 0 0 12px #ffe573, 0 0 28px #ffbd31; }
+    .spark.left { top: 65px; left: -28px; }
+    .spark.right { top: 146px; right: -28px; font-size: 72px; }
+    .steps { margin-top: 30px; padding: 0 24px 28px; border: 2px solid #514a40; border-radius: 38px; background: linear-gradient(130deg, #35312b, #29231f); text-align: center; }
+    .steps h2 { display: table; margin: -2px auto 26px; padding: 10px 22px 14px; border: 2px solid #494239; border-radius: 0 0 22px 22px; color: #ddd7c9; font-size: 25px; font-weight: 400; }
+    .flow { display: flex; align-items: center; justify-content: space-between; }
+    .step { width: 146px; color: #dcd4c8; font-size: 19px; white-space: nowrap; }
+    .step p { margin: 14px 0 0; }
+    .icon { display: block; width: 48px; height: 48px; margin: auto; }
+    .app-icon { border-radius: 12px; object-fit: cover; }
+    .arrow { color: #a7986b; font-size: 34px; font-weight: 300; }
+    .identity { margin: 24px 0 12px; color: #e9d8b6; text-align: center; font-size: 15px; overflow-wrap: anywhere; }
+    .notice { margin: 0; color: #b7aaa0; text-align: center; font-size: 15px; line-height: 1.9; }
+  </style>
+</head>
+<body>
+  <main id="container">
+    <section class="card">
+      <span class="spark left">✦</span><span class="spark right">✦</span>
+      <h1>让好友打开 <strong>米游社</strong> 扫一扫</h1>
+      <p class="subtitle">加油！就差你这一扫啦</p>
+      <div class="frame"><img class="qr" src="{{qr}}" alt="米游社登录二维码"></div>
+    </section>
+    <section class="steps">
+      <h2>好友如何操作</h2>
+      <div class="flow">
+        <div class="step"><img class="icon app-icon" src="{{miyousheIcon}}" alt="米游社"><p>打开米游社扫一扫</p></div>
+        <span class="arrow">›</span>
+        <div class="step"><svg class="icon" viewBox="0 0 48 48" fill="#ffe384" aria-hidden="true"><path fill-rule="evenodd" d="M3 3h18v18H3zm4 4v10h10V7zm20-4h18v18H27zm4 4v10h10V7zM3 27h18v18H3zm4 4v10h10V31z"/><path d="M10 10h4v4h-4zm24 0h4v4h-4zM10 34h4v4h-4zm17-7h7v7h-7zm11 0h7v7h-7zm-4 7h7v7h-7zm-7 7h7v4h-7zm14 0h4v4h-4z"/></svg><p>扫描二维码</p></div>
+        <span class="arrow">›</span>
+        <div class="step"><svg class="icon" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="22" fill="#ffe384"/><path d="m13 23 8 8 15-16" fill="none" stroke="#3b3224" stroke-width="6"/></svg><p>确认登录就好啦</p></div>
+      </div>
+    </section>
+    <div class="identity">登录标识码：{{identity}}</div>
+    <p class="notice">这是米游社账号登录授权，将用于机器人账号绑定。<br>请核对标识码，仅扫描本人发起的二维码，请勿转发。<br>二维码过期后请重新获取 · 发送「米哈游登录终止」可取消</p>
+  </main>
+</body>
+</html>
