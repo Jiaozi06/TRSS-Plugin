@@ -204,37 +204,44 @@ export class miHoYoLogin extends plugin {
   }
 
   async miHoYoLoginQRCode() {
-    if (this.e.isGroup || !this.e.isPrivate) {
-      await this.reply("请私聊发送「米哈游登录」")
-      return true
-    }
-
     const userId = String(this.e.user_id)
     const existing = qrSessions.get(userId)
+    const loginButton = segment.button([
+      { text: "米哈游登录", callback: "米哈游登录" },
+      { text: "米游社登录", callback: "米游社登录" },
+    ])
+    const expired = ["二维码已过期，请重新登录", loginButton]
+    const errorTips = [
+      "登录失败，请检查日志\n如果【米哈游登录】无法使用，请尝试【米游社登录】\nhttps://git.trss.me/TRSS-Plugin",
+      loginButton,
+    ]
+    const reply = message => this.reply(message, true, { recallMsg: 60 })
+
     if (this.e.msg.endsWith("终止")) {
       if (existing) {
         existing.controller.abort()
         qrSessions.delete(userId)
-        await this.reply("扫码登录已终止")
-      } else {
-        await this.reply("当前没有待确认的扫码登录")
+        await reply([`${existing.command}已终止`, loginButton])
       }
       return true
     }
 
+    const chat = JSON.stringify([this.e.self_id, this.e.isGroup ? this.e.group_id : null])
     if (existing || Running[userId]) {
-      await this.reply("有正在进行的登录操作，请完成后再试")
+      if (existing?.card && existing.chat === chat) await reply(existing.card)
+      else await reply("有正在进行的登录操作，请完成后再试……")
       return true
     }
 
+    const command = this.e.msg.includes("米游社") ? "米游社登录" : "米哈游登录"
+    const cancelButton = segment.button([{ text: "终止登录", callback: `${command}终止` }])
     const controller = new AbortController()
-    const session = { controller }
+    const session = { controller, command, chat }
     const { signal } = controller
     const deadline = setTimeout(() => controller.abort("timeout"), 120_000)
     qrSessions.set(userId, session)
 
-    const cancelButton = segment.button([{ text: "终止登录", callback: "米哈游登录终止" }])
-    let failure = "获取二维码失败"
+    let stage = "获取二维码"
     try {
       const login = createLoginSession(signal)
       const { url, ticket } = await login.create()
@@ -245,16 +252,12 @@ export class miHoYoLogin extends plugin {
         style: config.miHoYoLogin.qrStyle,
       })
       signal.throwIfAborted()
-      const sent = await this.reply(
-        ["请使用米游社扫码，并在手机上确认登录", image, cancelButton],
-        true,
-        { recallMsg: 120 },
-      )
-      if (sent === false) return true
+      session.card = ["请使用米游社扫码登录", image, cancelButton]
+      if (await reply(session.card) === false) return true
 
       let scanned = false
       while (!signal.aborted) {
-        failure = "二维码查询失败或已过期"
+        stage = "查询二维码"
         await delay(5000, undefined, { signal })
         const data = await login.query(ticket)
         signal.throwIfAborted()
@@ -263,34 +266,33 @@ export class miHoYoLogin extends plugin {
         if (status === "Scanned") {
           if (!scanned) {
             scanned = true
-            await this.reply(["二维码已扫描，请确认登录", cancelButton], true, { recallMsg: 60 })
+            await reply(["二维码已扫描，请确认登录", cancelButton])
           }
           continue
         }
         if (status !== "Confirmed") {
-          await this.reply("二维码已失效或登录已取消，请重新发送「米哈游登录」")
+          await reply(expired)
           return true
         }
 
-        failure = "扫码已确认，但获取绑定凭据失败"
+        stage = "获取绑定凭据"
         const { cookie, stoken } = await login.credentials(data)
         signal.throwIfAborted()
-        // 沿用宿主私聊绑定事件，交由已安装的 Cookie / Stoken 插件处理。
         this.makeMessage(stoken)
         this.makeMessage(cookie)
-        await this.reply(
-          await Bot.makeForwardArray(["扫码登录完成，已提交自动绑定。以下是 Cookie 和 Stoken。", cookie, stoken]),
-          true,
-          { recallMsg: 60 },
-        )
+        if (this.e.isPrivate && !this.e.isGroup) {
+          const result = command === "米游社登录"
+            ? ["登录完成，以下是 Cookie，将会自动绑定", cookie]
+            : ["登录完成，以下分别是 Cookie 和 Stoken，将会自动绑定", cookie, stoken]
+          await this.reply(await Bot.makeForwardArray(result))
+        }
         return true
       }
       signal.throwIfAborted()
     } catch {
-      if (signal.reason === "timeout") {
-        await this.reply("扫码登录超时，请重新发送「米哈游登录」")
-      } else if (!signal.aborted) {
-        await this.reply(`${failure}，请重新发送「米哈游登录」`)
+      if (!signal.aborted || signal.reason === "timeout") {
+        logger.warn(`[米哈游登录] ${stage}${signal.aborted ? "超时" : "失败"}`)
+        await reply(stage === "查询二维码" && !signal.aborted ? expired : errorTips)
       }
     } finally {
       clearTimeout(deadline)
@@ -319,7 +321,7 @@ export class miHoYoLogin extends plugin {
     if (!config.miHoYoLogin.help) return false
     this.reply(
       [
-        "请私聊发送【米哈游登录】或【米游社登录】，并使用米游社扫码",
+        "优先发送【米哈游登录】\n如果无法登录发送【米游社登录】",
         segment.button([
           { text: "米哈游登录", callback: "米哈游登录" },
           { text: "米游社登录", callback: "米游社登录" },
