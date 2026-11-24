@@ -123,7 +123,7 @@ export function createLoginSession(signal) {
       const cookieToken = await exchange(token.token, mid, uid, 4)
       const cookie = `ltuid_v2=${uid};account_id_v2=${uid};ltoken_v2=${ltoken};cookie_token_v2=${cookieToken};ltmid_v2=${mid};account_mid_v2=${mid};`
       const stoken = `stoken=${token.token};stuid=${uid};mid=${mid};ltoken=${ltoken}`
-      return { cookie, stoken }
+      return { cookie, stoken, sk: { stuid: uid, stoken: token.token, mid, device, ltoken } }
     },
   }
 }

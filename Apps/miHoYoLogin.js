@@ -5,6 +5,7 @@ import crypto from "crypto"
 import fetch from "node-fetch"
 import { setTimeout as delay } from "node:timers/promises"
 import { createLoginSession } from "../Model/miHoYo-qr-login.js"
+import { saveXiaoyaoStoken } from "../Model/xiaoyao-stoken.js"
 
 const regex = "^#?(米哈?游社?登(录|陆|入)|登(录|陆|入)米哈?游社?)"
 const publicKey = `-----BEGIN PUBLIC KEY-----
@@ -276,10 +277,20 @@ export class miHoYoLogin extends plugin {
         }
 
         stage = "获取绑定凭据"
-        const { cookie, stoken } = await login.credentials(data)
+        const { cookie, stoken, sk } = await login.credentials(data)
         signal.throwIfAborted()
-        this.makeMessage(stoken)
+        let saved
+        try {
+          saved = await saveXiaoyaoStoken(this.e.user_id, sk, cookie, signal)
+        } catch {
+          signal.throwIfAborted()
+          logger.warn("[米哈游登录] 无法保存逍遥 Stoken")
+        }
+        signal.throwIfAborted()
+        if (saved === "absent") this.makeMessage(stoken)
         this.makeMessage(cookie)
+        if (!saved) await reply("Stoken 保存失败，Cookie 已提交绑定，请检查逍遥数据目录")
+        if (saved === "account") await reply("Stoken 已保存到通行证账号，暂未关联游戏 UID")
         if (this.e.isPrivate && !this.e.isGroup) {
           const result = command === "米游社登录"
             ? ["登录完成，以下是 Cookie，将会自动绑定", cookie]
