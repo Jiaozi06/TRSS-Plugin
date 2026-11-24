@@ -3,6 +3,8 @@ import { renderQR } from "../Model/qr-card.js"
 import _ from "lodash"
 import crypto from "crypto"
 import fetch from "node-fetch"
+import { setTimeout as delay } from "node:timers/promises"
+import { createLoginSession } from "../Model/miHoYo-qr-login.js"
 
 const regex = "^#?(米哈?游社?登(录|陆|入)|登(录|陆|入)米哈?游社?)"
 const publicKey = `-----BEGIN PUBLIC KEY-----
@@ -64,35 +66,9 @@ function request(url, { data, aigis, cookie } = {}) {
   return fetch(url, opts)
 }
 
-function app_request(url, { data, device_id }) {
-  return fetch(url, {
-    method: "post",
-    body: data ? JSON.stringify(data) : "{}",
-    headers: {
-      "User-Agent": "HYPContainer/1.3.3.182",
-      "x-rpc-app_id": "ddxf5dufpuyo",
-      "x-rpc-client_type": "3",
-      "x-rpc-device_id": device_id,
-    },
-  })
-}
-
-const web_headers = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-  "x-rpc-app_id": "bll8iq97cem8",
-  "x-rpc-device_id": random_string(16),
-}
-
-const errorTips = [
-  "登录失败，请检查日志\n如果【米哈游登录】无法使用，请尝试【米游社登录】\nhttps://git.trss.me/TRSS-Plugin",
-  segment.button([
-    { text: "米哈游登录", callback: "米哈游登录" },
-    { text: "米游社登录", callback: "米游社登录" },
-  ]),
-]
 const accounts = {}
 const Running = {}
+const qrSessions = new Map()
 
 export class miHoYoLogin extends plugin {
   constructor() {
@@ -148,7 +124,7 @@ export class miHoYoLogin extends plugin {
   async miHoYoLogin() {
     if (!this.e.msg) return false
     this.finish("miHoYoLogin")
-    if (Running[this.e.user_id]) {
+    if (Running[this.e.user_id] || qrSessions.has(String(this.e.user_id))) {
       this.reply("有正在进行的登录操作，请完成后再试……", true, { recallMsg: 60 })
       return false
     }
@@ -228,252 +204,99 @@ export class miHoYoLogin extends plugin {
   }
 
   async miHoYoLoginQRCode() {
-    if (this.e.msg.includes("终止")) {
-      Running[this.e.user_id] = false
+    if (this.e.isGroup || !this.e.isPrivate) {
+      await this.reply("请私聊发送「米哈游登录」")
       return true
     }
 
-    if (Running[this.e.user_id])
-      return this.reply(
-        [
-          "请使用米游社扫码登录",
-          Running[this.e.user_id],
-          segment.button([{ text: "终止登录", callback: "米哈游登录终止" }]),
-        ],
-        true,
-        {
-          recallMsg: 60,
-        },
-      )
-    Running[this.e.user_id] = true
-
-    if (this.e.msg.includes("米游社")) return this.HyperionLogin()
-
-    const device_id = random_string(16)
-    let res, ticket
-    try {
-      res = await app_request(
-        "https://passport-api.mihoyo.com/account/ma-cn-passport/app/createQRLogin",
-        { device_id },
-      )
-      res = await res.json()
-      logger.mark(`${this.e.logFnc} 登录接口响应已收到`)
-
-      const url = res.data.url
-      ticket = res.data.ticket
-      const img = await renderQR(url, { login: true, userId: this.e.user_id, botId: this.e.self_id, style: config.miHoYoLogin.qrStyle })
-      Running[this.e.user_id] = img
-      this.reply(
-        [
-          "请使用米游社扫码登录",
-          img,
-          segment.button([{ text: "终止登录", callback: "米哈游登录终止" }]),
-        ],
-        true,
-        { recallMsg: 60 },
-      )
-    } catch (err) {
-      Running[this.e.user_id] = false
-      return logger.error(this.e.logFnc, err)
+    const userId = String(this.e.user_id)
+    const existing = qrSessions.get(userId)
+    if (this.e.msg.endsWith("终止")) {
+      if (existing) {
+        existing.controller.abort()
+        qrSessions.delete(userId)
+        await this.reply("扫码登录已终止")
+      } else {
+        await this.reply("当前没有待确认的扫码登录")
+      }
+      return true
     }
 
-    let data, Scanned
-    for (let n = 1; n < 60; n++) {
-      await Bot.sleep(5000)
-      if (Running[this.e.user_id] === false)
-        return this.reply(
-          [
-            "米哈游登录已终止",
-            segment.button([
-              { text: "米哈游登录", callback: "米哈游登录" },
-              { text: "米游社登录", callback: "米游社登录" },
-            ]),
-          ],
+    if (existing || Running[userId]) {
+      await this.reply("有正在进行的登录操作，请完成后再试")
+      return true
+    }
+
+    const controller = new AbortController()
+    const session = { controller }
+    const { signal } = controller
+    const deadline = setTimeout(() => controller.abort("timeout"), 120_000)
+    qrSessions.set(userId, session)
+
+    const cancelButton = segment.button([{ text: "终止登录", callback: "米哈游登录终止" }])
+    let failure = "获取二维码失败"
+    try {
+      const login = createLoginSession(signal)
+      const { url, ticket } = await login.create()
+      const image = await renderQR(url, {
+        login: true,
+        userId: this.e.user_id,
+        botId: this.e.self_id,
+        style: config.miHoYoLogin.qrStyle,
+      })
+      signal.throwIfAborted()
+      const sent = await this.reply(
+        ["请使用米游社扫码，并在手机上确认登录", image, cancelButton],
+        true,
+        { recallMsg: 120 },
+      )
+      if (sent === false) return true
+
+      let scanned = false
+      while (!signal.aborted) {
+        failure = "二维码查询失败或已过期"
+        await delay(5000, undefined, { signal })
+        const data = await login.query(ticket)
+        signal.throwIfAborted()
+        const status = data?.status || data?.stat
+        if (status === "Created") continue
+        if (status === "Scanned") {
+          if (!scanned) {
+            scanned = true
+            await this.reply(["二维码已扫描，请确认登录", cancelButton], true, { recallMsg: 60 })
+          }
+          continue
+        }
+        if (status !== "Confirmed") {
+          await this.reply("二维码已失效或登录已取消，请重新发送「米哈游登录」")
+          return true
+        }
+
+        failure = "扫码已确认，但获取绑定凭据失败"
+        const { cookie, stoken } = await login.credentials(data)
+        signal.throwIfAborted()
+        // 沿用宿主私聊绑定事件，交由已安装的 Cookie / Stoken 插件处理。
+        this.makeMessage(stoken)
+        this.makeMessage(cookie)
+        await this.reply(
+          await Bot.makeForwardArray(["扫码登录完成，已提交自动绑定。以下是 Cookie 和 Stoken。", cookie, stoken]),
           true,
           { recallMsg: 60 },
         )
-      try {
-        res = await app_request(
-          "https://passport-api.mihoyo.com/account/ma-cn-passport/app/queryQRLoginStatus",
-          {
-            device_id,
-            data: { ticket },
-          },
-        )
-        res = await res.json()
-
-        if (res.retcode !== 0) {
-          Running[this.e.user_id] = false
-          return this.reply(
-            [
-              "二维码已过期，请重新登录",
-              segment.button([
-                { text: "米哈游登录", callback: "米哈游登录" },
-                { text: "米游社登录", callback: "米游社登录" },
-              ]),
-            ],
-            true,
-            { recallMsg: 60 },
-          )
-        }
-
-        if (res.data.status === "Scanned" && !Scanned) {
-          logger.mark(`${this.e.logFnc} 登录接口响应已收到`)
-          Scanned = true
-          this.reply(
-            [
-              "二维码已扫描，请确认登录",
-              segment.button([{ text: "终止登录", callback: "米哈游登录终止" }]),
-            ],
-            true,
-            { recallMsg: 60 },
-          )
-        }
-
-        if (res.data.status === "Confirmed") {
-          logger.mark(`${this.e.logFnc} 登录接口响应已收到`)
-          break
-        }
-      } catch (err) {
-        logger.error(this.e.logFnc, err)
+        return true
       }
-    }
-    Running[this.e.user_id] = false
-
-    const cookie = []
-    try {
-      if (!(res.data?.tokens && res.data?.user_info))
-        return this.reply(errorTips, true, { recallMsg: 60 })
-
-      const uid = res.data.user_info.aid || res.data.user_info.uid || res.data.user_info.account_id,
-        token = (
-          res.data.tokens.find(i => i.name === "stoken" || i.name === "stoken_v2") ||
-          res.data.tokens[0]
-        )?.token,
-        mid = res.data.user_info.mid
-      if (!(uid && token && mid)) return this.reply(errorTips, true, { recallMsg: 60 })
-
-      cookie.push(`stoken=${token};stuid=${uid};mid=${mid}`)
-      res = await request(
-        `https://passport-api.mihoyo.com/account/auth/api/getCookieAccountInfoBySToken?stoken=${token}&uid=${uid}&mid=${mid}`,
-        { cookie: cookie[0] },
-      )
-      res = await res.json()
-      logger.mark(`${this.e.logFnc} 登录接口响应已收到`)
-
-      if (!res.data?.cookie_token) return this.reply(errorTips, true, { recallMsg: 60 })
-      cookie.push(`ltoken=${token};ltuid=${uid};cookie_token=${res.data.cookie_token}`)
-    } catch (err) {
-      logger.error(this.e.logFnc, err)
-      return this.reply(errorTips, true, { recallMsg: 60 })
-    }
-
-    for (const i of cookie) this.makeMessage(i)
-    if (this.e.isPrivate)
-      this.reply(
-        await Bot.makeForwardArray([
-          "登录完成，以下分别是 Cookie 和 Stoken，将会自动绑定",
-          ...cookie,
-        ]),
-      )
-  }
-
-  async HyperionLogin() {
-    let res, ticket
-    try {
-      res = await fetch(
-        "https://passport-api.mihoyo.com/account/ma-cn-passport/web/createQRLogin",
-        { headers: web_headers, method: "post", body: "{}" },
-      )
-      res = await res.json()
-      logger.mark(`${this.e.logFnc} 登录接口响应已收到`)
-
-      const url = res.data.url
-      ticket = res.data.ticket
-      const img = await renderQR(url, { login: true, userId: this.e.user_id, botId: this.e.self_id, style: config.miHoYoLogin.qrStyle })
-      Running[this.e.user_id] = img
-      this.reply(
-        [
-          "请使用米游社扫码登录",
-          img,
-          segment.button([{ text: "终止登录", callback: "米游社登录终止" }]),
-        ],
-        true,
-        { recallMsg: 60 },
-      )
-    } catch (err) {
-      Running[this.e.user_id] = false
-      logger.error(this.e.logFnc, err)
-      return this.reply(errorTips, true, { recallMsg: 60 })
-    }
-
-    let cookie, Scanned
-    for (let n = 1; n < 60; n++) {
-      await Bot.sleep(5000)
-      if (Running[this.e.user_id] === false)
-        return this.reply(
-          [
-            "米游社登录已终止",
-            segment.button([
-              { text: "米哈游登录", callback: "米哈游登录" },
-              { text: "米游社登录", callback: "米游社登录" },
-            ]),
-          ],
-          true,
-          { recallMsg: 60 },
-        )
-      try {
-        res = await fetch(
-          "https://passport-api.mihoyo.com/account/ma-cn-passport/web/queryQRLoginStatus",
-          { headers: web_headers, method: "post", body: JSON.stringify({ ticket }) },
-        )
-        cookie = res.headers.getSetCookie()
-        res = await res.json()
-
-        if (res.retcode !== 0) {
-          Running[this.e.user_id] = false
-          return this.reply(
-            [
-              "二维码已过期，请重新登录",
-              segment.button([
-                { text: "米哈游登录", callback: "米哈游登录" },
-                { text: "米游社登录", callback: "米游社登录" },
-              ]),
-            ],
-            true,
-            { recallMsg: 60 },
-          )
-        }
-
-        if (res.data.status === "Scanned" && !Scanned) {
-          logger.mark(`${this.e.logFnc} 登录接口响应已收到`)
-          Scanned = true
-          this.reply(
-            [
-              "二维码已扫描，请确认登录",
-              segment.button([{ text: "终止登录", callback: "米游社登录终止" }]),
-            ],
-            true,
-            { recallMsg: 60 },
-          )
-        }
-
-        if (res.data.status === "Confirmed") {
-          logger.mark(`${this.e.logFnc} 登录接口响应已收到`)
-          break
-        }
-      } catch (err) {
-        logger.error(this.e.logFnc, err)
+      signal.throwIfAborted()
+    } catch {
+      if (signal.reason === "timeout") {
+        await this.reply("扫码登录超时，请重新发送「米哈游登录」")
+      } else if (!signal.aborted) {
+        await this.reply(`${failure}，请重新发送「米哈游登录」`)
       }
+    } finally {
+      clearTimeout(deadline)
+      if (qrSessions.get(userId) === session) qrSessions.delete(userId)
     }
-    Running[this.e.user_id] = false
-
-    if (!cookie?.length) return this.reply(errorTips, true, { recallMsg: 60 })
-
-    cookie = cookie.map(i => i.split(";")[0]).join(";")
-    this.makeMessage(cookie)
-    if (this.e.isPrivate)
-      this.reply(await Bot.makeForwardArray(["登录完成，以下是 Cookie，将会自动绑定", cookie]))
+    return true
   }
 
   makeMessage(msg) {
@@ -496,7 +319,7 @@ export class miHoYoLogin extends plugin {
     if (!config.miHoYoLogin.help) return false
     this.reply(
       [
-        "优先发送【米哈游登录】\n如果无法登录发送【米游社登录】",
+        "请私聊发送【米哈游登录】或【米游社登录】，并使用米游社扫码",
         segment.button([
           { text: "米哈游登录", callback: "米哈游登录" },
           { text: "米游社登录", callback: "米游社登录" },
