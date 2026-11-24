@@ -70,6 +70,19 @@ function request(url, { data, aigis, cookie } = {}) {
 const accounts = {}
 const Running = {}
 const qrSessions = new Map()
+const bindingHelpLine = /(?:^|\r?\n)[ \t]*(?:使用命令说明|更多帮助(?:请)?查看)[ \t]*#云崽帮助[。！!]?[ \t]*(?=\r?\n|$)/g
+
+function removeBindingHelp(message) {
+  if (typeof message === "string") return message.replace(bindingHelpLine, "")
+  if (Array.isArray(message)) {
+    return message.flatMap(part => {
+      if (typeof part !== "string" || !part) return [part]
+      const text = part.replace(bindingHelpLine, "")
+      return text ? [text] : []
+    })
+  }
+  return message
+}
 
 export class miHoYoLogin extends plugin {
   constructor() {
@@ -288,7 +301,7 @@ export class miHoYoLogin extends plugin {
         }
         signal.throwIfAborted()
         if (saved === "absent") this.makeMessage(stoken)
-        this.makeMessage(cookie)
+        this.makeMessage(cookie, { hideBindingHelp: true })
         if (!saved) await reply("Stoken 保存失败，Cookie 已提交绑定，请检查逍遥数据目录")
         if (saved === "account") await reply("Stoken 已保存到通行证账号，暂未关联游戏 UID")
         if (this.e.isPrivate && !this.e.isGroup) {
@@ -312,14 +325,18 @@ export class miHoYoLogin extends plugin {
     return true
   }
 
-  makeMessage(msg) {
+  makeMessage(msg, { hideBindingHelp = false } = {}) {
     Bot.em("message.private.friend", {
       self_id: this.e.self_id,
       message_id: this.e.message_id,
       user_id: this.e.user_id,
       sender: this.e.sender,
       friend: this.e.friend,
-      reply: (msg, quote, opts) => this.reply(msg, quote, { ...opts, recallMsg: 60 }),
+      reply: (msg, quote, opts) => {
+        const message = hideBindingHelp ? removeBindingHelp(msg) : msg
+        if (hideBindingHelp && (message === "" || (Array.isArray(message) && message.length === 0))) return false
+        return this.reply(message, quote, { ...opts, recallMsg: 60 })
+      },
       post_type: "message",
       message_type: "private",
       sub_type: "friend",
