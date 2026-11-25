@@ -85,6 +85,24 @@ export async function exchangeCookie({ stuid, stoken, mid, device }, signal) {
   return { cookie, device, ltoken }
 }
 
+export async function getGameRoles(cookie) {
+  try {
+    const response = await fetch("https://api-takumi.mihoyo.com/binding/api/getUserGameRolesByCookie", {
+      headers: { Cookie: cookie },
+      redirect: "error",
+      signal: AbortSignal.timeout(5000),
+    })
+    if (!response.ok) return []
+    const result = await response.json()
+    if (Number(result?.retcode) === 0 && Array.isArray(result.data?.list)) {
+      return result.data.list.filter(role => /^[1-9]\d*$/.test(String(role?.game_uid ?? "")))
+    }
+  } catch {
+    // 角色查询失败不影响凭据保存。
+  }
+  return []
+}
+
 export function createLoginSession(signal) {
   const device = crypto.randomBytes(16).toString("hex").toUpperCase()
   const qrHeaders = {

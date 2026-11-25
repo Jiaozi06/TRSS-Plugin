@@ -1,29 +1,11 @@
 import crypto from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
-import fetch from "node-fetch"
+import { getGameRoles } from "./miHoYo-qr-login.js"
 import YAML from "yaml"
 
 const writes = new Map()
 const gameUid = /^[1-9]\d*$/
-
-async function getRoles(cookie) {
-  try {
-    const response = await fetch("https://api-takumi.mihoyo.com/binding/api/getUserGameRolesByCookie", {
-      headers: { Cookie: cookie },
-      redirect: "error",
-      signal: AbortSignal.timeout(5000),
-    })
-    if (!response.ok) return []
-    const result = await response.json()
-    if (Number(result?.retcode) === 0 && Array.isArray(result.data?.list)) {
-      return result.data.list.filter(role => gameUid.test(String(role?.game_uid ?? "")))
-    }
-  } catch {
-    // 角色查询失败时，仍可更新已有 UID，并按通行证账号保存新凭据。
-  }
-  return []
-}
 
 async function writeStoken(file, fields, roles, signal) {
   let data = {}
@@ -78,7 +60,7 @@ export async function saveXiaoyaoStoken(userId, sk, cookie, signal) {
   const id = String(userId)
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) throw new Error("Invalid Stoken user ID")
   signal.throwIfAborted()
-  const roles = await getRoles(cookie)
+  const roles = await getGameRoles(cookie)
   signal.throwIfAborted()
 
   const file = path.resolve(plugin, "data", "yaml", `${id}.yaml`)

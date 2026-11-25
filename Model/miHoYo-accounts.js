@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
 import YAML from "yaml"
-import { exchangeCookie } from "./miHoYo-qr-login.js"
+import { exchangeCookie, getGameRoles } from "./miHoYo-qr-login.js"
 
 const pending = new Map()
 
@@ -41,16 +41,19 @@ async function readXiaoyaoAccounts(id) {
 
   const data = YAML.parse(text)
   if (!data || typeof data !== "object" || Array.isArray(data)) return {}
-  const entries = data.stuid ? [data] : Object.values(data)
+  const entries = data.stuid ? [[data.uid, data]] : Object.entries(data)
   const accounts = {}
-  for (const entry of entries) {
+  for (const [key, entry] of entries) {
     const stuid = String(entry?.stuid ?? "")
     if (!/^[1-9]\d*$/.test(stuid) || typeof entry.stoken !== "string" || !entry.stoken) continue
     if (entry.userId != null && String(entry.userId) !== id) continue
     const mid = entry.mid || entry.ltmid_v2 || entry.account_mid_v2
-    if (!accounts[stuid]?.mid) {
-      accounts[stuid] = { stuid, stoken: entry.stoken, mid, device: entry.device }
+    const roles = accounts[stuid]?.roles ?? []
+    const uid = String(entry.uid || key || "")
+    if (/^[1-9]\d*$/.test(uid) && !roles.some(role => role.uid === uid)) {
+      roles.push({ uid, region: entry.region_name })
     }
+    if (!accounts[stuid]?.mid) accounts[stuid] = { stuid, stoken: entry.stoken, mid, device: entry.device, roles }
   }
   return accounts
 }
@@ -70,7 +73,7 @@ async function writeAccounts(file, accounts, signal) {
 
 export function saveLoginAccount(userId, sk, cookie, signal) {
   return withAccounts(userId, (file, accounts) => {
-    accounts[sk.stuid] = { ...sk, cookie }
+    accounts[sk.stuid] = { ...sk, cookie, roles: accounts[sk.stuid]?.roles }
     return writeAccounts(file, accounts, signal)
   })
 }
@@ -81,36 +84,45 @@ export function refreshLoginAccounts(userId) {
       if (Object.keys(accounts).length) return {}
       throw error
     })
+    const results = []
     const updated = []
-    const migrated = new Map()
-    let missingMid = 0
-    let failed = 0
     for (const [uid, sk] of Object.entries({ ...legacy, ...accounts })) {
+      const roles = sk?.roles?.length ? sk.roles : legacy[uid]?.roles ?? []
+      const result = { uid, roles, status: "failed" }
+      results.push(result)
       if (!sk?.mid || ["null", "undefined"].includes(sk.mid)) {
-        missingMid++
+        result.status = "missingMid"
         continue
       }
       try {
         const credentials = await exchangeCookie({ ...sk, stuid: uid }, AbortSignal.timeout(20000))
         const account = { ...sk, ...credentials, stuid: uid }
-        if (Object.hasOwn(accounts, uid)) updated.push(account)
-        else migrated.set(uid, account)
+        updated.push({ account, result, migrated: !Object.hasOwn(accounts, uid) })
       } catch {
-        failed++
+        // 其他账号仍继续刷新。
       }
     }
 
-    if (migrated.size) {
-      const current = await readXiaoyaoAccounts(id).catch(() => ({}))
-      for (const [uid, account] of migrated) {
-        if (current[uid]?.stoken !== account.stoken || current[uid]?.mid !== account.mid) failed++
-        else updated.push(account)
+    await Promise.all(updated.map(async ({ account, result }) => {
+      const roles = await getGameRoles(account.cookie)
+      if (roles.length) {
+        result.roles = roles.map(role => ({ uid: String(role.game_uid), game: role.game_biz, region: role.region_name }))
       }
+    }))
+    const current = updated.some(entry => entry.migrated) ? await readXiaoyaoAccounts(id).catch(() => ({})) : {}
+    let saved = false
+    for (const { account, result, migrated } of updated) {
+      const uid = account.stuid
+      if (migrated && (current[uid]?.stoken !== account.stoken || current[uid]?.mid !== account.mid)) {
+        result.status = "changed"
+        continue
+      }
+      accounts[uid] = { ...account, roles: result.roles }
+      result.cookie = account.cookie
+      result.status = "success"
+      saved = true
     }
-    if (updated.length) {
-      for (const account of updated) accounts[account.stuid] = account
-      await writeAccounts(file, accounts)
-    }
-    return { cookies: updated.map(account => account.cookie), missingMid, failed }
+    if (saved) await writeAccounts(file, accounts)
+    return results
   })
 }

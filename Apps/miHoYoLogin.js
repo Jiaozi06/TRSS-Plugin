@@ -72,6 +72,20 @@ const accounts = {}
 const Running = {}
 const qrSessions = new Map()
 const refreshing = new Set()
+const gameNames = new Map([
+  ["hk4e_cn", "原神"],
+  ["hkrpg_cn", "崩坏：星穹铁道"],
+  ["nap_cn", "绝区零"],
+  ["bh3_cn", "崩坏3"],
+  ["bh2_cn", "崩坏学园2"],
+  ["nxx_cn", "未定事件簿"],
+])
+const refreshMessages = {
+  success: "Cookie 刷新成功",
+  missingMid: "请求异常：Stoken 缺少 mid，请重新扫码登录",
+  changed: "请求异常：Stoken 已变更，请重新刷新",
+  failed: "请求异常：Cookie 换票失败，请稍后重试或重新扫码登录",
+}
 const bindingHelpLine = /(?:^|\r?\n)[ \t]*(?:使用命令说明|更多帮助(?:请)?查看)[ \t]*#云崽帮助[。！!]?[ \t]*(?=\r?\n|$)/g
 
 function removeBindingHelp(message) {
@@ -129,14 +143,30 @@ export class miHoYoLogin extends plugin {
 
     refreshing.add(userId)
     try {
-      const { cookies, missingMid, failed } = await refreshLoginAccounts(userId)
-      for (const cookie of cookies) this.makeMessage(cookie, { silent: true })
-
-      const result = []
-      if (cookies.length) result.push(`Cookie 刷新成功（${cookies.length} 个账号）`)
-      if (missingMid) result.push(`${missingMid} 个账号缺少 mid，请重新扫码登录`)
-      if (failed) result.push(`${failed} 个账号刷新失败，请稍后重试或重新扫码登录`)
-      await this.reply(result.length ? result.join("\n") : "没有可刷新的账号，请先发送 #扫码登录")
+      const results = await refreshLoginAccounts(userId)
+      if (!results.length) {
+        await this.reply("请先绑定 Stoken\n发送【#扫码登录】绑定米游社账号")
+        return true
+      }
+      const messages = results.map(({ uid, roles, status, cookie }, index) => {
+        if (cookie) this.makeMessage(cookie, { silent: true })
+        const accounts = roles.map(({ uid, game, region }) => {
+          const name = gameNames.get(game)
+          return `${name ? `【${name}】` : ""}UID：${uid}${region ? `（${region}）` : ""}`
+        })
+        if (!accounts.length) accounts.push(this.e.isGroup ? `米游社账号 ${index + 1}` : `米游社账号：${uid}`)
+        return [...accounts, refreshMessages[status]].join("\n")
+      })
+      const success = results.filter(result => result.status === "success").length
+      messages.unshift(`刷新CK结果\n共 ${results.length} 个账号，成功 ${success} 个，未完成 ${results.length - success} 个`)
+      const contact = this.e.isGroup ? this.e.group : this.e.friend
+      let forward
+      try {
+        forward = typeof contact?.makeForwardMsg === "function"
+          ? await contact.makeForwardMsg(messages.map(message => ({ message, nickname: this.e.bot?.nickname, user_id: this.e.self_id })))
+          : await Bot.makeForwardArray(messages)
+      } catch {}
+      await this.reply(forward || messages.join("\n\n"))
     } catch {
       logger.error("[刷新Cookie]刷新失败")
       await this.reply("Cookie刷新失败，请稍后重试或重新扫码登录")
