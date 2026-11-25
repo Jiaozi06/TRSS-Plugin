@@ -5,6 +5,7 @@ import crypto from "crypto"
 import fetch from "node-fetch"
 import { setTimeout as delay } from "node:timers/promises"
 import { createLoginSession } from "../Model/miHoYo-qr-login.js"
+import { refreshLoginAccounts, saveLoginAccount } from "../Model/miHoYo-accounts.js"
 import { saveXiaoyaoStoken } from "../Model/xiaoyao-stoken.js"
 
 const regex = "^#?(米哈?游社?登(录|陆|入)|登(录|陆|入)米哈?游社?)"
@@ -70,6 +71,7 @@ function request(url, { data, aigis, cookie } = {}) {
 const accounts = {}
 const Running = {}
 const qrSessions = new Map()
+const refreshing = new Set()
 const bindingHelpLine = /(?:^|\r?\n)[ \t]*(?:使用命令说明|更多帮助(?:请)?查看)[ \t]*#云崽帮助[。！!]?[ \t]*(?=\r?\n|$)/g
 
 function removeBindingHelp(message) {
@@ -97,6 +99,10 @@ export class miHoYoLogin extends plugin {
           fnc: "miHoYoLoginQRCode",
         },
         {
+          reg: /^#(原神|星铁|绝区零)?刷新c(oo)?k(ie)?$/i,
+          fnc: "refreshCk",
+        },
+        {
           reg: `${regex}.+$`,
           fnc: "miHoYoLoginDetect",
         },
@@ -112,6 +118,32 @@ export class miHoYoLogin extends plugin {
     accounts[this.e.user_id] = this.e
     this.setContext("miHoYoLogin")
     this.reply("请发送密码", true, { recallMsg: 60 })
+  }
+
+  async refreshCk() {
+    const userId = String(this.e.user_id)
+    if (refreshing.has(userId)) {
+      await this.reply("已有正在进行的 Cookie 刷新")
+      return true
+    }
+
+    refreshing.add(userId)
+    try {
+      const { cookies, missingMid, failed } = await refreshLoginAccounts(userId)
+      for (const cookie of cookies) this.makeMessage(cookie, { silent: true })
+
+      const result = []
+      if (cookies.length) result.push(`Cookie 刷新成功（${cookies.length} 个账号）`)
+      if (missingMid) result.push(`${missingMid} 个账号缺少 mid，请重新扫码登录`)
+      if (failed) result.push(`${failed} 个账号刷新失败，请稍后重试或重新扫码登录`)
+      await this.reply(result.length ? result.join("\n") : "没有可刷新的账号，请先发送 #扫码登录")
+    } catch {
+      logger.error("[刷新Cookie]刷新失败")
+      await this.reply("Cookie刷新失败，请稍后重试或重新扫码登录")
+    } finally {
+      refreshing.delete(userId)
+    }
+    return true
   }
 
   async crack_geetest(gt, challenge) {
@@ -292,6 +324,8 @@ export class miHoYoLogin extends plugin {
         stage = "获取绑定凭据"
         const { cookie, stoken, sk } = await login.credentials(data)
         signal.throwIfAborted()
+        stage = "保存登录凭据"
+        await saveLoginAccount(this.e.user_id, sk, cookie, signal)
         let saved
         try {
           saved = await saveXiaoyaoStoken(this.e.user_id, sk, cookie, signal)
@@ -325,7 +359,7 @@ export class miHoYoLogin extends plugin {
     return true
   }
 
-  makeMessage(msg, { hideBindingHelp = false } = {}) {
+  makeMessage(msg, { hideBindingHelp = false, silent = false } = {}) {
     Bot.em("message.private.friend", {
       self_id: this.e.self_id,
       message_id: this.e.message_id,
@@ -333,6 +367,7 @@ export class miHoYoLogin extends plugin {
       sender: this.e.sender,
       friend: this.e.friend,
       reply: (msg, quote, opts) => {
+        if (silent) return false
         const message = hideBindingHelp ? removeBindingHelp(msg) : msg
         if (hideBindingHelp && (message === "" || (Array.isArray(message) && message.length === 0))) return false
         return this.reply(message, quote, { ...opts, recallMsg: 60 })
